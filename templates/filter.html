@@ -1,0 +1,35 @@
+<div class="row">
+  <label for="min-rating">Min rating:</label>
+  <input type="text" id="min-rating" name="min-rating" value="{{ min_rating }}">
+  <label for="max-rating">Max rating:</label>
+  <input type="text" id="max-rating" name="max-rating" value="{{ max_rating }}">
+  <div id="rating-slider"></div>
+
+  <label for="min-reviews">Min reviews:</label>
+  <input type="text" id="min-reviews" name="min-reviews" value="{{ min_reviews }}">
+  <label for="max-reviews">Max reviews:</label>
+  <input type="text" id="max-reviews" name="max-reviews" value="{{ max_reviews }}">
+  <div id="reviews-slider"></div>
+
+  <label for="min-year">Min year:</label>
+  <input type="text" id="min-year" name="min-year" value="{{ min_year }}">
+  <label for="max-year">Max year:</label>
+  <input type="text" id="max-year" name="max-year" value="{{ max_year }}">
+  <div id="year-slider"></div>
+
+  <a id="check-all-genres" href="#">
+    {% if not genres %}Enable{% else %}Disable{% endif %} all genres
+  </a>
+  <div id="genres">
+    {% for genre in all_genres %}
+    <label for="genre-{{ genre }}">
+      <input {% if genre in genres %}checked="checked"{% endif %} type="checkbox" value="{{ genre }}" name="genres" id="genre-{{ genre }}" />
+      {{ genre }}
+    </label>
+    {% endfor %}
+  </div>
+
+</div>
+<div class="row">
+  <input type="submit" value="Update" />
+</div>

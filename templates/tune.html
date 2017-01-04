@@ -1,0 +1,26 @@
+{% include 'header.html' %}
+
+<a href="/saves?{{ session_param }}">View saves</a>
+
+<a href="/?{{ session_param }}">Select more favorite movies</a>
+
+<form action="/update-options?{{ session_param }}" method="POST">
+{% include 'filter.html' %}
+</form>
+
+<ul>
+  {% for movie in movies %}
+  <li>
+    {% include 'movie.html' %}
+    <a href="/skip?id={{ movie.id }}&{{ session_param }}">Skip</a>
+    <a href="/save?id={{ movie.id }}&{{ session_param }}">Save</a>
+    {% for rating in [1, 2, 3, 4, 5] %}
+    <a href="/rate?id={{ movie.id }}&rating={{ rating }}&{{ session_param }}">
+      {{ rating }}
+    </a>
+    {% endfor %}
+  </li>
+  {% endfor %}
+</ul>
+
+{% include 'footer.html' %}

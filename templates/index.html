@@ -1,0 +1,46 @@
+{% include 'header.html' %}
+
+<div class="row">
+  <h1>Movie recs</h1>
+</div>
+
+<div class="row">
+  {% if error %}
+  <p id="error">{{ error }}</p>
+  {% endif %}
+</div>
+
+<div class="row">
+  <h2>Step 1: Choose your favorite movies</h2>
+</div>
+
+<form action="/add-movie?{{ session_param }}" method="POST" id="add-movie-form">
+  <div class="row">
+    <label for="title-year">Title</label>
+    <input type="text" id="title-year" name="title-year" value="{{ previous_title }}" />
+    <input type="submit" value="Add movie" />
+  </div>
+</form>
+
+<div class="row">
+  <ul>
+    {% for movie in liked_movies %}
+    <li>
+      <a href="{{ movie.imdb_link() }}">
+        {{ movie.title }} ({{movie.year}})
+      </a>
+      <a href="/remove-movie?id={{ movie.id }}&{{ session_param }}">Remove</a>
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+
+<div class="row">
+  <a href="/tune?&{{ session_param }}">Next</a>
+</div>
+
+<div class="row">
+  <a href="/">Start over from scratch</a>
+</div>
+
+{% include 'footer.html' %}

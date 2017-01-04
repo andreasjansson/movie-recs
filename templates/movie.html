@@ -1,0 +1,14 @@
+<a href="{{ movie.imdb_link() }}">
+  {{ movie.title }}
+  <img class="imdb-image" data-imdb-id="{{ movie.imdb_id }}" src="/images/placeholder.jpg" />
+</a>
+
+{% if movie.ratings %}
+<ul>
+  {% for user, rating in movie.ratings.items() %}
+  <li>
+    <a href="/reviewer/{{ user.id }}?{{ session_param }}">{{ user.name() }}</a>: {{ rating }}/5
+  </li>
+  {% endfor %}
+</ul>
+{% endif %}

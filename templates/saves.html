@@ -1,0 +1,15 @@
+{% include 'header.html' %}
+
+<a href="/tune?{{ session_param }}">Continue tuning</a>
+
+<h2>Saved movies</h2>
+
+<ul>
+  {% for movie in movies %}
+  <li>
+    {% include 'movie.html' %}
+  </li>
+  {% endfor %}
+</ul>
+
+{% include 'footer.html' %}
