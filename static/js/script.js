@@ -1,13 +1,18 @@
 $(function() {
     route();
     replaceImdbImages();
+
+    $('body').on('mouseover', '.star.open', openStarMouseover);
+    $('body').on('mouseout', '.star.open', openStarMouseout);
 });
 
 function route() {
     var routes = {
-        '/': index,
-        '/tune': tune,
-        '/reviewer/[0-9]+': reviewer
+        '/curate': curate,
+        '/discover': discover,
+        '/filter': filter,
+        '/reviewer/[^/]+$': reviewer,
+        '/movie/[^/]+$': movie
     }
 
     for (key in routes) {
@@ -19,7 +24,15 @@ function route() {
     }
 }
 
-function index() {
+function discover() {
+    $('a.ajax-movie-control').on('click', discoverAjaxMovieControlClick);
+}
+
+function reviewer() {
+    $('a.ajax-movie-control').on('click', reviewerAjaxMovieControlClick);
+}
+
+function curate() {
     $('#title-year').autocomplete({
         serviceUrl: '/autocomplete/titles',
         onSelect: function (suggestion) {
@@ -28,26 +41,115 @@ function index() {
     });
 }
 
-function tune() {
-    setupRatingSlider();
-    setupNumReviewsSlider();
-    setupYearSlider();
-    setupGenres();
+function filter() {
+    setupEnableAll($('#genres'));
+    setupEnableAll($('#decades'));
+    setupEnableAll($('#ratings'));
+    $('#submit').hide();
+    $('input').click(submitFilterForm);
 }
 
-function reviewer() {
-    setupRatingSlider();
-    setupYearSlider();
-    setupGenres();
+function movie() {
+    $('a.ajax-movie-control').on('click', ajaxMovieControlClickRefresh);
 
-    var $minReviews = $('#min-reviews');
-    var $maxReviews = $('#max-reviews');
-    $minReviews.attr('readonly', 'readonly');
-    $maxReviews.attr('readonly', 'readonly');
+    $('img').on('omdb-response', populateMovieInfo);
+}
+
+function openStarMouseover(e) {
+    var $star = $(e.target);
+    var rating = $star.data('rating')
+    var $wrapper = $star.closest('.stars');
+    var $stars = $wrapper.find('.star');
+    $stars.each(function(i, el) {
+        var $s = $(el);
+        if ($s.data('rating') <= rating) {
+            $s.attr('src', '/images/star.png');
+        }
+    });
+}
+
+function openStarMouseout(e) {
+    var $star = $(e.target);
+    var rating = $star.data('rating')
+    var $wrapper = $star.closest('.stars');
+    var $stars = $wrapper.find('.star');
+    $stars.attr('src', '/images/star-open.png');
+}
+
+function populateMovieInfo(e, r) {
+    $('#movie-country').text('Country: ' + r.Country);
+    $('#movie-duration').text('Runtime: ' + r.Runtime);
+    $('#movie-plot').text(r.Plot);
+}
+
+function discoverAjaxMovieControlClick(e) {
+    e.preventDefault();
+
+    var $a = $(e.target).closest('a');
+    var href = $a.attr('href');
+    $.get(href);
+
+    var $movie = $a.closest('.movie');
+
+    $a.addClass('selected');
+    setTimeout(function() { $movie.parent().remove(); }, 200);
+
+    return false;
+}
+
+function reviewerAjaxMovieControlClick(e) {
+    e.preventDefault();
+
+    var $a = $(e.target).closest('a');
+    var href = $a.attr('href');
+
+    var $movie = $a.closest('.movie');
+    var movieId = $movie.data('movie-id');
+    var reviewerId = $('#wrapper').data('reviewer-id');
+    var url = '/movie/' + movieId + '/ajax/reviewer/' + reviewerId;
+
+    $a.addClass('selected');
+
+    $.get(href, function() {
+        $.get(url, function(html) {
+            console.log(html);
+            $movie.replaceWith(html);
+            replaceImdbImages();
+        });
+    });
+
+    return false;
+}
+
+function ajaxMovieControlClickRefresh(e) {
+    var $a = $(e.target).closest('a');
+    var href = $a.attr('href');
+
+    $a.addClass('selected');
+
+    $.get(href, function() {
+        location.reload();
+    });
+
+    return false;
 }
 
 function replaceImdbImages() {
+    $('.imdb-image').on('omdb-response', handleOmdbResponse);
     $('.imdb-image').each(replaceImdbImage);
+}
+
+function handleOmdbResponse(e, r) {
+    var $el = $(e.target);
+    var imageUrl = r['Poster'];
+    $el.attr('src', imageUrl);
+
+    var title = $el.attr('title');
+
+    title += '\n' + r.Country + ', ' + r.Year + '\n' +
+        r.Runtime + '\n\n' + r.Plot;
+
+    $el.attr('title', title);
 }
 
 function replaceImdbImage(i, el) {
@@ -56,97 +158,48 @@ function replaceImdbImage(i, el) {
     $.getJSON('http://www.omdbapi.com',
               {i: 'tt' + imdbId,
                plot: 'short',
-               r: 'json'},
-              function(ret) {
-                  var imageUrl = ret['Poster'];
-                  $el.attr('src', imageUrl);
-              });
+               r: 'json'}, function(r) {
+                   $el.trigger('omdb-response', [r])
+               });
+
+    $el.removeClass('imdb-image');
 }
 
-function setupRatingSlider() {
-    var $minRating = $('#min-rating');
-    var $maxRating = $('#max-rating');
-    var $slider = $("#rating-slider");
-    $slider.slider({
-        range: true,
-        min: 5,
-        max: 50,
-        values: [$minRating.val() * 10, $maxRating.val() * 10],
-        slide: function(event, ui) {
-            $minRating.val(ui.values[0] / 10);
-            $maxRating.val(ui.values[1] / 10);
-        }
-    });
+function setupEnableAll($div) {
+    var $inputs = $('input', $div);
 
-    $minRating.attr('readonly', 'readonly');
-    $maxRating.attr('readonly', 'readonly');
-}
+    var $a = $('.enable-disable-all', $div);
 
-function setupNumReviewsSlider() {
-
-    var $minReviews = $('#min-reviews');
-    var $maxReviews = $('#max-reviews');
-    var $slider = $("#reviews-slider");
-    $slider.slider({
-        range: true,
-        min: 1,
-        max: 20,
-        values: [$minReviews.val(), $maxReviews.val()],
-        slide: function(event, ui) {
-            $minReviews.val(ui.values[0]);
-            $maxReviews.val(ui.values[1]);
-        }
-    });
-
-    $minReviews.attr('readonly', 'readonly');
-    $maxReviews.attr('readonly', 'readonly');
-}
-
-function setupYearSlider() {
-    var $minYear = $('#min-year');
-    var $maxYear = $('#max-year');
-    var $slider = $("#year-slider");
-    $slider.slider({
-        range: true,
-        min: 1891,
-        max: 2015,
-        values: [$minYear.val(), $maxYear.val()],
-        slide: function(event, ui) {
-            $minYear.val(ui.values[0]);
-            $maxYear.val(ui.values[1]);
-        }
-    });
-
-    $minYear.attr('readonly', 'readonly');
-    $maxYear.attr('readonly', 'readonly');
-}
-
-function setupGenres() {
-    var $genreInputs = $('#genres input');
-
-    var anyGenresChecked = function() {
-        return $('#genres input:checked').length > 0;
+    var anyChecked = function() {
+        return $('input:checked', $div).length > 0;
     }
 
-    var checkGenreButtonsState = function() {
-        if (anyGenresChecked()) {
-            $a.text('Disable all genres');
+    var checkButtonsState = function() {
+        if (anyChecked()) {
+            $a.text('Disable all');
         } else {
-            $a.text('Enable all genres');
+            $a.text('Enable all');
         }
         return true;
     };
 
-    var $a = $('#check-all-genres');
-
     $a.click(function() {
-        if (anyGenresChecked()) {
-            $genreInputs.removeAttr('checked');
+        if (anyChecked()) {
+            $inputs.removeAttr('checked');
         } else {
-            $genreInputs.prop('checked', true);
+            $inputs.prop('checked', true);
         }
-        checkGenreButtonsState();
+        checkButtonsState();
+
+        submitFilterForm();
     });
 
-    $genreInputs.on('click', checkGenreButtonsState);
+    $inputs.on('click', checkButtonsState);
+
+    checkButtonsState();
+}
+
+function submitFilterForm() {
+    var $form = $('#form');
+    $.post('/filter', $form.serialize());
 }

@@ -13,7 +13,80 @@ CLEANUP_REGEX = re.compile(
     r'^(?P<title>.+?)(?:, (?P<prefix>[a-z]+))?(?: \((?P<translation>.+)\))?$')
 
 conn = MySQLdb.connect('localhost', db='movie_recs')
+conn.autocommit(False)
 cursor = conn.cursor()
+
+
+def create_user_tables():
+    cursor.execute('SET FOREIGN_KEY_CHECKS=0')
+    cursor.execute('DROP TABLE IF EXISTS user')
+    cursor.execute('''
+        CREATE TABLE user (
+            id              INT PRIMARY KEY AUTO_INCREMENT,
+            username        TEXT,
+            password        BINARY(60)
+        ) ENGINE=InnoDB'''
+    )
+    cursor.execute('DROP TABLE IF EXISTS user_rating')
+    cursor.execute('''
+        CREATE TABLE user_rating (
+            user_id         INT,
+            movie_id        INT,
+            rating          FLOAT,
+            date_added      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (user_id, movie_id),
+            FOREIGN KEY (user_id) REFERENCES user (id),
+            FOREIGN KEY (movie_id) REFERENCES movie (id)
+        ) ENGINE=InnoDB'''
+    )
+    cursor.execute('DROP TABLE IF EXISTS user_save')
+    cursor.execute('''
+        CREATE TABLE user_save (
+            user_id         INT,
+            movie_id        INT,
+            date_saved      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (user_id, movie_id),
+            FOREIGN KEY (user_id) REFERENCES user (id),
+            FOREIGN KEY (movie_id) REFERENCES movie (id)
+        ) ENGINE=InnoDB'''
+    )
+    cursor.execute('DROP TABLE IF EXISTS user_skip')
+    cursor.execute('''
+        CREATE TABLE user_skip (
+            user_id         INT,
+            movie_id        INT,
+            date_skipped    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (user_id, movie_id),
+            FOREIGN KEY (user_id) REFERENCES user (id),
+            FOREIGN KEY (movie_id) REFERENCES movie (id)
+        ) ENGINE=InnoDB'''
+    )
+    cursor.execute('DROP TABLE IF EXISTS user_similar_reviewer')
+    cursor.execute('''
+        CREATE TABLE user_similar_reviewer (
+            user_id         INT,
+            reviewer_id     INT,
+            similarity      FLOAT,
+            PRIMARY KEY (user_id, reviewer_id),
+            FOREIGN KEY (user_id) REFERENCES user (id)
+        ) ENGINE=InnoDB'''
+    )
+    cursor.execute('DROP TABLE IF EXISTS user_similar_reviewer_review')
+    cursor.execute('''
+        CREATE TABLE user_similar_reviewer_review (
+            user_id         INT,
+            reviewer_id     INT,
+            movie_id        INT,
+            rating          FLOAT,
+            PRIMARY KEY (user_id, reviewer_id, movie_id),
+            FOREIGN KEY (user_id) REFERENCES user (id)
+        ) ENGINE=InnoDB'''
+    )
+    create_indexes([
+        ('user_similar_reviewer_review', 'user_id'),
+        ('user_similar_reviewer_review', 'reviewer_id'),
+        ('user_similar_reviewer_review', 'movie_id')
+    ])
 
 
 def write_title_cache():
@@ -103,13 +176,16 @@ def insert_movies():
 
             i += 1
 
-    indexes = [
+    create_indexes([
         ('movie', 'year'),
         ('movie', 'title'),
         ('movie', 'translation'),
         ('movie2genre', 'movie_id'),
         ('movie2genre', 'genre'),
-    ]
+    ])
+
+
+def create_indexes(indexes):
     for table, column in indexes:
         cursor.execute('CREATE INDEX {table}_{column} ON {table} ({column})'
                        .format(table=table, column=column))
@@ -122,22 +198,22 @@ def insert_reviews():
     cursor.execute('DROP TABLE IF EXISTS review')
     cursor.execute('''CREATE TABLE review (
         movie_id        INT,
-        user_id         INT,
+        reviewer_id     INT,
         rating          FLOAT,
-        PRIMARY KEY (movie_id, user_id),
+        PRIMARY KEY (movie_id, reviewer_id),
         FOREIGN KEY (movie_id) REFERENCES movie(id)
     ) ENGINE=InnoDB''')
 
     i = 0
     with open(os.path.join(DATA_DIR, 'ratings.csv')) as f:
-        for user_id, movie_id, rating, timestamp in unicode_csv_reader(f):
+        for reviewer_id, movie_id, rating, timestamp in unicode_csv_reader(f):
             if movie_id == 'movieId':
                 continue
 
             movie_id = int(movie_id)
             rating = float(rating)
             cursor.execute('INSERT INTO review VALUES (%s, %s, %s)',
-                           (movie_id, user_id, rating))
+                           (movie_id, reviewer_id, rating))
 
             if i % 100000 == 0:
                 conn.commit()
@@ -148,20 +224,13 @@ def insert_reviews():
 
     indexes = [
         ('review', 'movie_id'),
-        ('review', 'user_id'),
+        ('review', 'reviewer_id'),
     ]
     for table, column in indexes:
         cursor.execute('CREATE INDEX {table}_{column} ON {table} ({column})'
                        .format(table=table, column=column))
 
     conn.commit()
-
-
-def read_cache():
-    with open('cache.cpkl') as f:
-        (movie2title, title2movie, title2titles,
-         movie2review, user2review) = cPickle.load(f)
-    return movie2title, title2movie, title2titles, movie2review, user2review
 
 
 def unicode_csv_reader(unicode_csv_data, dialect=csv.excel, **kwargs):
@@ -178,10 +247,7 @@ def utf_8_encoder(unicode_csv_data):
 
 
 def main():
-    (movie2title, title2movie, title2titles,
-     movie2review, user2review) = read_cache()
-
-
+    pass
 
 
 if __name__ == '__main__':

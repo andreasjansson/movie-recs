@@ -1,35 +1,79 @@
+{% include 'header.html' %}
+
+{% include 'menu.html' %}
+
 <div class="row">
-  <label for="min-rating">Min rating:</label>
-  <input type="text" id="min-rating" name="min-rating" value="{{ min_rating }}">
-  <label for="max-rating">Max rating:</label>
-  <input type="text" id="max-rating" name="max-rating" value="{{ max_rating }}">
-  <div id="rating-slider"></div>
 
-  <label for="min-reviews">Min reviews:</label>
-  <input type="text" id="min-reviews" name="min-reviews" value="{{ min_reviews }}">
-  <label for="max-reviews">Max reviews:</label>
-  <input type="text" id="max-reviews" name="max-reviews" value="{{ max_reviews }}">
-  <div id="reviews-slider"></div>
+  <form id="form" class="col-xs-12" method="POST" action="/filter">
 
-  <label for="min-year">Min year:</label>
-  <input type="text" id="min-year" name="min-year" value="{{ min_year }}">
-  <label for="max-year">Max year:</label>
-  <input type="text" id="max-year" name="max-year" value="{{ max_year }}">
-  <div id="year-slider"></div>
+    <div id="genres">
+      <div class="row">
+        <div class="col-xs-6 col-sm-1">
+          <h3>Genres</h3>
+        </div>
+        <div class="col-xs-6">
+          <a href="#" class="enable-disable-all">Enable all</a>
+        </div>
+      </div>
+      <div class="row">
+        {% for genre in genres %}
+        <div class="col-xs-6 col-sm-4 col-md-3 col-lg-2">
+          <label class="checkbox-inline">
+            <input type="checkbox" value="{{ genre }}" name="genre" {% if genre in filter.genres %}checked="checked"{% endif %}> {{ genre | capitalize }}
+          </label>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
 
-  <a id="check-all-genres" href="#">
-    {% if not genres %}Enable{% else %}Disable{% endif %} all genres
-  </a>
-  <div id="genres">
-    {% for genre in all_genres %}
-    <label for="genre-{{ genre }}">
-      <input {% if genre in genres %}checked="checked"{% endif %} type="checkbox" value="{{ genre }}" name="genres" id="genre-{{ genre }}" />
-      {{ genre }}
-    </label>
-    {% endfor %}
-  </div>
+    <div id="decades">
+      <div class="row">
+        <div class="col-xs-6 col-sm-1">
+          <h3>Decades</h3>
+        </div>
+        <div class="col-xs-6">
+          <a href="#" class="enable-disable-all">Enable all</a>
+        </div>
+      </div>
+      <div class="row">
+        {% for decade in decades %}
+        <div class="col-xs-6 col-sm-4 col-md-3 col-lg-2">
+          <label class="checkbox-inline">
+            <input type="checkbox" value="{{ decade }}" name="decade" {% if decade in filter.decades %}checked="checked"{% endif %}> {{ decade }}
+          </label>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div id="ratings">
+      <div class="row">
+        <div class="col-xs-6 col-sm-1">
+          <h3>Ratings</h3>
+        </div>
+        <div class="col-xs-6">
+          <a href="#" class="enable-disable-all">Enable all</a>
+        </div>
+      </div>
+      <div class="row">
+        {% for star in range(1, 6, 1) %}
+        <div class="col-xs-6 col-sm-4 col-md-3 col-lg-2">
+          <label class="checkbox-inline">
+            <input type="checkbox" value="{{ star }}" name="star" {% if star in filter.stars %}checked="checked"{% endif %}> {{ star }} stars
+          </label>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="row" id="submit">
+      <div class="col-xs-12">
+        <button type="submit" class="btn btn-default">Update filter</button>
+      </div>
+    </div>
+
+  </form>
 
 </div>
-<div class="row">
-  <input type="submit" value="Update" />
-</div>
+
+{% include 'footer.html' %}

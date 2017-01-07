@@ -1,23 +1,27 @@
+import os
+import datetime
+import bcrypt
+from functools import wraps
 from glob import glob
 import MySQLdb
 import time
 from bidict import bidict
-import urllib
 import random
-import base64
-from scipy.stats import trim_mean
-import numpy as np
 import re
-from collections import namedtuple, defaultdict
+from collections import namedtuple, defaultdict, OrderedDict
 import cPickle
 from flask import (
-    Flask, redirect, url_for, request, render_template, g, jsonify
+    Flask, session, redirect, url_for, request, render_template, g, jsonify
 )
 
 app = Flask(__name__, static_url_path='')
 app.secret_key = 'super super secret key'
 
-NUM_SIMILAR_USERS = 20
+SALT = 'super super secret salt'
+NUM_SIMILAR_REVIEWERS = 25
+NUM_RECOMMENDED_MOVIES = 24
+
+last_update_time = 0
 
 
 def get_db():
@@ -25,6 +29,7 @@ def get_db():
     if db is None:
         t = time.time()
         g._database = db = MySQLdb.connect('localhost', db='movie_recs', charset='utf8')
+        db.autocommit(True)
     return db
 
 
@@ -46,26 +51,12 @@ def read_names():
         for line in f:
             names.append(line.strip())
 
-    num_names = len(names)
-    user_names = bidict()
-    for i in range(138493):
-        name = names[i % num_names].capitalize()
-        j = 0
-        while True:
-            if name not in user_names.inv:
-                user_names[i] = name
-                break
-            j += (i % 26)
-            name += ' %s' % chr(65 + ((i + j) % 26))
-        else:
-            print i
-
-    return user_names
+    return names
 
 
 cached_titles = read_title_cache()
-user_names = read_names()
-avatars = glob('static/images/avatars/*.png')
+reviewer_names = read_names()
+avatars = [os.path.basename(a) for a in glob('static/images/avatars/*.png')]
 
 
 all_genres = [
@@ -88,90 +79,240 @@ all_genres = [
     'western',
     'film-noir',
 ]
-
-#@app.route('/<path:path>')
-#def static_proxy(path):
-#    return app.send_static_file(path)
+all_decades = range(1890, 2020, 10)
 
 
-def decode_session(s):
-    if s:
-        try:
-            return cPickle.loads(base64.b64decode(s))
-        except Exception as e:
-            print 'decode error', e
-            return {}
-    return {}
+def object_cache(f):
+    @wraps(f)
+    def wrapper(self, *args, **kwargs):
+        if not hasattr(self, '_object_cache'):
+            self._object_cache = {}
+
+        key = (f.__name__, tuple(args), tuple(kwargs.items()))
+        if key in self._object_cache:
+            return self._object_cache[key]
+
+        ret = f(self, *args, **kwargs)
+        self._object_cache[key] = ret
+
+        return ret
+    return wrapper
 
 
-def encode_session(s):
-    return base64.b64encode(cPickle.dumps(s, protocol=cPickle.HIGHEST_PROTOCOL))
+class User(namedtuple('User', 'id username')):
 
+    @object_cache
+    def load_latest_rating_time(self):
+        cursor = get_db().cursor()
+        cursor.execute('''
+            SELECT date_added
+            FROM user_rating
+            WHERE user_id = %s
+            ORDER BY date_added DESC
+        ''', (self.id, ))
+        row = cursor.fetchone()
+        if not row:
+            return 0
+        date_added = timestamp_to_int(row[0])
+        return int(date_added)
 
-def get_session():
-    return decode_session(encoded_session())
+    @object_cache
+    def load_ratings(self):
+        cursor = get_db().cursor()
+        cursor.execute('''
+            SELECT movie_id, rating
+            FROM user_rating
+            WHERE user_id = %s
+            ORDER BY date_added DESC
+        ''', (self.id, ))
+        ratings = OrderedDict()
+        for movie_id, rank in cursor.fetchall():
+            ratings[movie_id] = rank
+        return ratings
 
+    @object_cache
+    def load_similar_reviewers(self):
+        cursor = get_db().cursor()
+        cursor.execute('''
+            SELECT reviewer_id, similarity
+            FROM user_similar_reviewer
+            WHERE user_id = %s
+            ORDER BY similarity DESC
+        ''', (self.id, ))
+        return [Reviewer(reviewer_id, similarity)
+                for reviewer_id, similarity in cursor]
 
-def session_contains(key):
-    session = get_session()
-    return key in session
+    @object_cache
+    def load_skips(self):
+        cursor = get_db().cursor()
+        cursor.execute('''
+            SELECT movie_id
+            FROM user_skip
+            WHERE user_id = %s
+            ORDER BY date_skipped DESC
+        ''', (self.id, ))
+        return [row[0] for row in cursor]
 
+    @object_cache
+    def load_saves(self):
+        cursor = get_db().cursor()
+        cursor.execute('''
+            SELECT movie_id
+            FROM user_save
+            WHERE user_id = %s
+            ORDER BY date_saved DESC
+        ''', (self.id, ))
+        return [row[0] for row in cursor]
 
-def session_get(key, default=None):
-    session = get_session()
-    return session.get(key, default)
+    def rate_movie_id(self, movie_id, rating):
+        cursor = get_db().cursor()
+        cursor.execute('''
+            INSERT INTO user_rating (user_id, movie_id, rating)
+            VALUES (%s, %s, %s)
+            ON DUPLICATE KEY UPDATE rating = %s
+        ''', (self.id, movie_id, rating, rating))
 
+    def save_movie_id(self, movie_id):
+        cursor = get_db().cursor()
+        cursor.execute('''
+            INSERT INTO user_save (user_id, movie_id)
+            VALUES (%s, %s)
+        ''', (self.id, movie_id))
 
-def session_put(key, value):
-    session = get_session()
-    session[key] = value
-    request.updated_session = encode_session(session)
+    def skip_movie_id(self, movie_id):
+        cursor = get_db().cursor()
+        cursor.execute('''
+            INSERT INTO user_skip (user_id, movie_id)
+            VALUES (%s, %s)
+        ''', (self.id, movie_id))
 
+    def unsave_movie_id(self, movie_id):
+        cursor = get_db().cursor()
+        cursor.execute('''
+            DELETE FROM user_save
+            WHERE user_id = %s AND movie_id = %s
+        ''', (self.id, movie_id))
 
-def session_pop(key, default=None):
-    session = get_session()
-    ret = session.get(key, default)
-    if key in session:
-        del session[key]
-        request.updated_session = encode_session(session)
-    return ret
+    def unskip_movie_id(self, movie_id):
+        cursor = get_db().cursor()
+        cursor.execute('''
+            DELETE FROM user_skip
+            WHERE user_id = %s AND movie_id = %s
+        ''', (self.id, movie_id))
 
+    def unrate_movie_id(self, movie_id):
+        cursor = get_db().cursor()
+        cursor.execute('''
+            DELETE FROM user_rating
+            WHERE user_id = %s AND movie_id = %s
+        ''', (self.id, movie_id))
 
-def session_delete(key):
-    session = get_session()
-    if key in session:
-        del session[key]
-        request.updated_session = encode_session(session)
+    def load_reviewer_by_id(self, reviewer_id):
+        cursor = get_db().cursor()
+        cursor.execute('''
+            SELECT similarity
+            FROM user_similar_reviewer
+            WHERE user_id = %s
+            AND reviewer_id = %s
+        ''', (self.id, reviewer_id))
+        row = cursor.fetchone()
+        if row:
+            return Reviewer(reviewer_id, row[0])
+        else:
+            return Reviewer(reviewer_id, None)
 
+    def update_similar_reviewers(self, count=NUM_SIMILAR_REVIEWERS):
+        cursor = get_db().cursor()
 
-def encoded_session():
-    if hasattr(request, 'updated_session'):
-        return request.updated_session
-    return request.args.get('s', '')
+        sql = '''
+            SELECT reviewer_id,
+                AVG(POWER(5 - ABS(r.rating - ur.rating), 2))
+                    * POWER(COUNT(*), 1/10.)
+            FROM review r
+            JOIN user_rating ur
+            ON r.movie_id = ur.movie_id
+            WHERE user_id = %s
+            GROUP BY reviewer_id
+            ORDER by 2 DESC
+            LIMIT %s;
+        '''
 
+        t = time.time()
+        cursor.execute(sql, (self.id, count))
+        rows = cursor.fetchall()
 
-def url_for_with_session(name, **kwargs):
-    return url_for(name, s=encoded_session(), **kwargs)
+        print 'updated reviewer %d (%s) in %.2f seconds' % (self.id, self.username, time.time() - t)
 
+        cursor.execute('''
+            DELETE FROM user_similar_reviewer
+            WHERE user_id = %s
+        ''', (self.id, ))
 
-def session_params():
-    return {
-        'session_param': urllib.urlencode({'s': encoded_session()})
-    }
+        for reviewer_id, score in rows:
+            cursor.execute('''
+                INSERT INTO user_similar_reviewer
+                    (user_id, reviewer_id, similarity)
+                VALUES (%s, %s, %s)
+            ''', (self.id, reviewer_id, score))
+
+        cursor.execute('''
+            DELETE FROM user_similar_reviewer_review
+            WHERE user_id = %s
+        ''', (self.id, ))
+
+        cursor.execute('''
+            INSERT INTO user_similar_reviewer_review
+            SELECT %s, reviewer_id, movie_id, rating
+            FROM review
+            WHERE reviewer_id IN (
+                SELECT reviewer_id
+                FROM user_similar_reviewer
+                WHERE user_id = %s
+            )
+        ''', (self.id, self.id))
 
 
 class Movie(namedtuple('Movie', [
-        'id', 'year', 'title', 'translation', 'imdb_id', 'ratings'
+        'id',
+        'year',
+        'title',
+        'imdb_id',
+        'user_rating',
+        'reviewer_rating',
+        'mean_rating',
+        'num_ratings',
+        'saved',
+        'skipped',
+        'reviews',
+        'reviewers',
 ])):
+
+    def __new__(self, id, year, title, imdb_id,
+                user_rating=None, reviewer_rating=None, mean_rating=None,
+                num_ratings=None, saved=False, skipped=False,
+                reviews=None, reviewers=None):
+
+        if reviews:
+            num_ratings = len(reviews)
+            mean_rating = sum(reviews.values()) / float(len(reviews.values()))
+            reviewers = reviews.keys()
+
+        return super(Movie, self).__new__(
+            self, id, year, title, imdb_id,
+            user_rating, reviewer_rating, mean_rating, num_ratings,
+            saved, skipped, reviews, reviewers)
 
     def imdb_link(self):
         return 'http://www.imdb.com/title/tt%s/' % self.imdb_id
 
 
-class User(namedtuple('User', ['id'])):
+class Reviewer(namedtuple('Reviewer', ['id', 'similarity'])):
+
+    def __new__(self, id, similarity=None):
+        return super(Reviewer, self).__new__(self, id, similarity)
 
     def name(self):
-        return user_names[self.id]
+        return reviewer_names[self.id % len(reviewer_names)].capitalize()
 
     def avatar(self):
         return avatars[self.id % len(avatars)]
@@ -180,195 +321,499 @@ class User(namedtuple('User', ['id'])):
         return self.id % 360
 
 
-def get_user_id(name):
-    return user_names.inv[name]
+class MovieFilter(namedtuple('MovieFilter', [
+        'genres',
+        'decades',
+        'stars',
+])):
+
+    def __new__(self, genres=None, decades=None, stars=None):
+        if genres is None:
+            genres = all_genres
+        if decades is None:
+            decades = all_decades
+        if stars is None:
+            stars = [4, 5]
+        return super(MovieFilter, self).__new__(
+            self, genres, decades, stars)
+
+    def get_genre_sql(self):
+        return 'genre IN (%s)' % (', '.join(['%s'] * len(self.genres)))
+
+    def get_decade_sql(self):
+        return 'FLOOR(year / 10) * 10 IN (%s)' % (
+            ', '.join(['%s'] * len(self.decades)))
+
+    def get_avg_rating_sql(self):
+        return '(FLOOR(AVG(r.rating) + .5) IN (%s) OR AVG(r.rating) IS NULL)' % (
+            ', '.join(['%s'] * len(self.stars)))
 
 
-def load_movie_by_id(movie_id, similar_users=None):
-    movie_id = int(movie_id)
-    cursor = get_db().cursor()
-    if similar_users:
-        sql = '''
-            SELECT year, title, translation, imdb_id, user_id, rating
-            FROM movie m
-            LEFT OUTER JOIN review r
-            ON m.id = r.movie_id
-            AND user_id IN (%s)
-            WHERE id = %%s
-        ''' % ', '.join(['%s'] * len(similar_users))
-        cursor.execute(sql, similar_users + [movie_id])
-        rows = cursor.fetchall()
-        year, title, translation, imdb_id, _, _ = rows[0]
-        ratings = {User(user_id): rating
-                   for _, _, _, _, user_id, rating in rows
-                   if user_id}
+def timestamp_to_int(d):
+    return time.mktime(d.timetuple())
 
-        return Movie(movie_id, year, title, translation, imdb_id, ratings)
-    else:
-        cursor.execute('SELECT year, title, translation, imdb_id FROM movie WHERE id = ?', (movie_id, ))
-        year, title, translation, imdb_id = cursor.fetchone()
-        return Movie(movie_id, year, title, translation, imdb_id, {})
+
+def movie_filter_from_session():
+    if 'movie_filter' in session:
+        values = session['movie_filter']
+        return MovieFilter(values[0], values[1], values[2])
+    return MovieFilter()
+
+
+def movie_filter_from_form(form):
+    genres = form.getlist('genre')
+    assert not set(genres) - set(all_genres)
+
+    decades = [int(d) for d in form.getlist('decade')]
+    assert not set(decades) - set(all_decades)
+
+    stars = [int(s) for s in form.getlist('star')]
+    assert not set(stars) - set(range(1, 6))
+
+    return MovieFilter(genres=genres, decades=decades, stars=stars)
 
 
 def load_movie_by_title_year(title, year):
     cursor = get_db().cursor()
-    cursor.execute('SELECT id, year, title, translation, imdb_id FROM movie WHERE title = ? AND year = ?', (title, year))
+    cursor.execute('''
+        SELECT id, year, title, imdb_id
+        FROM movie
+        WHERE (title = %s OR translation = %s) AND year = %s
+    ''', (title, title, year))
+
     row = cursor.fetchone()
     if not row:
-        cursor.execute('SELECT id, year, title, translation, imdb_id FROM movie WHERE translation = ? AND year = ?', (title, year))
-        row = cursor.fetchone()
-        if not row:
-            return None
-    movie_id, year, title, translation, imdb_id = row
-    return Movie(movie_id, year, title, translation, imdb_id)
+        return None
+    movie_id, title, year, imdb_id = row
+    return Movie(id=movie_id, title=title, year=year, imdb_id=imdb_id)
 
 
-def score_diffs(diffs):
-    mean_diff = np.mean(np.abs(diffs))
-    count = len(diffs)
-    score = (5 - mean_diff) ** 2 * np.sqrt(count)
-
-    return score
-
-
-def get_similar_users(ratings, count=NUM_SIMILAR_USERS):
+def load_movie_for_user(movie_id, user):
     cursor = get_db().cursor()
 
-    sql = '''SELECT movie_id, user_id, rating
-             FROM review
-             WHERE movie_id IN (%s)''' % ', '.join(['%s'] * len(ratings))
+    similar_reviewers_by_id = {r.id: r for r in user.load_similar_reviewers()}
 
-    user_diffs = defaultdict(list)
-    cursor.execute(sql, ratings.keys())
-    for movie_id, user_id, rating in cursor.fetchall():
-        diff = rating - ratings[movie_id]
-        user_diffs[user_id].append(diff)
+    saves = user.load_saves()
+    skips = user.load_skips()
 
-    sorted_users = [user_id for user_id, _ in
-                    sorted(user_diffs.items(),
-                           key=lambda x: score_diffs(x[1]), reverse=True)]
+    sql = '''
+        SELECT m.id, title, year, imdb_id, ur.rating, r.reviewer_id, r.rating
+        FROM movie m
+        LEFT JOIN user_rating ur
+        ON m.id = ur.movie_id
+        AND ur.user_id = %s
+        LEFT JOIN review r
+        ON r.movie_id = m.id
+        AND reviewer_id IN ({reviewers_placeholders})
+        WHERE m.id = %s
+    '''.format(
+        reviewers_placeholders=', '.join(
+            ['NULL'] + (['%s'] * (len(similar_reviewers_by_id)))),
+    )
 
-    #for user_id in sorted_users[:100]:
-    #    print '*** ', user_id, len(user_diffs[user_id]), user_diffs[user_id], score_diffs(user_diffs[user_id])
+    args = [user.id] + similar_reviewers_by_id.keys() + [movie_id]
 
-    return sorted_users[:count]
+    cursor.execute(sql, args)
+    rows = cursor.fetchall()
+
+    if not rows:
+        return None
+
+    first = rows[0]
+    movie_id, title, year, imdb_id, user_rating, _, _ = first
+
+    reviews = OrderedDict(sorted([
+        (similar_reviewers_by_id[reviewer_id], rating)
+        for _, _, _, _, _, reviewer_id, rating in rows
+        if reviewer_id is not None
+    ], key=lambda x: x[0].similarity, reverse=True))
+
+    saved = movie_id in saves
+    skipped = movie_id in skips
+
+    return Movie(id=movie_id, title=title, year=year, imdb_id=imdb_id,
+                 user_rating=user_rating, saved=saved, skipped=skipped,
+                 reviews=reviews)
 
 
-def get_recs(ratings, similar_users,
-             skips, saves,
-             min_rating, max_rating,
-             min_reviews, max_reviews,
-             min_year, max_year,
-             genres,
-             count=10,
-             sort=None):
+def load_movie_for_reviewer(movie_id, reviewer_id, user):
     cursor = get_db().cursor()
 
-    print 'similar users', similar_users
+    saves = user.load_saves()
+    skips = user.load_skips()
 
-    sql = '''SELECT m.id
-             FROM review r
-             JOIN movie m
-             ON r.movie_id = m.id
-             JOIN movie2genre g
-             ON g.movie_id = m.id
-             WHERE m.id NOT IN (%s)
-             AND m.id NOT IN (%s)
-             AND m.id NOT IN (%s)
-             AND user_id IN (%s)
-             AND year >= %%s
-             AND year <= %%s
-             AND genre IN (%s)
-             GROUP BY m.id
-             HAVING AVG(rating) >= %%s
-             AND AVG(rating) <= %%s
-             AND COUNT(*) >= %%s
-             AND COUNT(*) <= %%s
-             %s
-          ''' % (
-              ', '.join(['%s'] * len(ratings)),
-              ', '.join(['%s'] * len(skips)),
-              ', '.join(['%s'] * len(saves)),
-              ', '.join(['%s'] * len(similar_users)),
-              ', '.join(['%s'] * len(genres)),
-              'ORDER BY AVG(rating) DESC' if sort == 'rating' else '',
-          )
+    sql = '''
+        SELECT m.id, title, year, imdb_id, ur.rating, r.rating
+        FROM movie m
+        JOIN review r
+        ON r.movie_id = m.id
+        AND reviewer_id = %s
+        LEFT JOIN user_rating ur
+        ON m.id = ur.movie_id
+        AND ur.user_id = %s
+        WHERE m.id = %s
+    '''
 
-    movie_ids = []
-    cursor.execute(
-        sql, tuple(ratings.keys() + skips + saves + similar_users +
-                   [min_year, max_year] + genres +
-                   [min_rating, max_rating, min_reviews, max_reviews]))
-    for row in cursor.fetchall():
-        movie_ids.append(row[0])
+    args = [reviewer_id, user.id, movie_id]
 
-    if sort == 'rating':
-        return movie_ids[:count]
-    else:
-        if len(movie_ids) > count:
-            return random.sample(movie_ids, count)
-        return movie_ids
+    cursor.execute(sql, args)
+    row = cursor.fetchone()
+
+    if not row:
+        return None
+
+    movie_id, title, year, imdb_id, user_rating, reviewer_rating = row
+
+    return Movie(id=movie_id, title=title, year=year, imdb_id=imdb_id,
+                 user_rating=user_rating, reviewer_rating=reviewer_rating,
+                 saved=movie_id in saves and not user_rating,
+                 skipped=movie_id in skips and not user_rating)
 
 
-def get_ratings():
-    ratings = session_get('ratings', {})
-    liked_movie_ids = session_get('liked_movie_ids', [])
-    for movie_id in liked_movie_ids:
-        ratings[movie_id] = 5.0
+def load_movies_for_user(user, movie_filter, movie_ids):
+    if not movie_ids:
+        return []
 
-    return ratings
+    cursor = get_db().cursor()
+
+    sql = '''
+        SELECT id, title, year, imdb_id, ur.rating, AVG(r.rating), COUNT(DISTINCT reviewer_id), GROUP_CONCAT(reviewer_id, ',')
+        FROM movie m
+        LEFT JOIN user_similar_reviewer_review r
+        ON r.movie_id = m.id
+        AND r.user_id = %s
+        LEFT JOIN user_rating ur
+        ON m.id = ur.movie_id
+        AND ur.user_id = %s
+        JOIN movie2genre g
+        ON g.movie_id = m.id
+        WHERE m.id in ({movies_placeholders})
+        AND {genre_filter}
+        AND {decade_filter}
+        GROUP BY m.id
+    '''.format(
+        genre_filter=movie_filter.get_genre_sql(),
+        movies_placeholders=', '.join(['%s'] * len(movie_ids)),
+        decade_filter=movie_filter.get_decade_sql(),
+    )
+
+    args = ([user.id] + [user.id] +
+            movie_ids + movie_filter.genres + movie_filter.decades)
+
+    cursor.execute(sql, args)
+
+    return [
+        Movie(
+            id=movie_id, title=title, year=year, imdb_id=imdb_id,
+            user_rating=user_rating, mean_rating=mean_rating,
+            num_ratings=num_ratings,
+            reviewers=[Reviewer(int(r))
+                       for r in set(reviewers.split(','))
+                       if r] if reviewers else []
+        )
+        for (movie_id, title, year, imdb_id, user_rating,
+             mean_rating, num_ratings, reviewers)
+        in cursor
+    ]
+
+
+def load_movies_for_reviewer(reviewer, user, movie_filter):
+    cursor = get_db().cursor()
+
+    saves = user.load_saves()
+    skips = user.load_skips()
+
+    sql = '''
+        SELECT m.id, title, year, imdb_id, ur.rating, r.rating
+        FROM movie m
+        JOIN review r
+        ON r.movie_id = m.id
+        AND reviewer_id = %s
+        LEFT JOIN user_rating ur
+        ON m.id = ur.movie_id
+        AND ur.user_id = %s
+        JOIN movie2genre g
+        ON g.movie_id = m.id
+        WHERE {genre_filter}
+        AND {decade_filter}
+        GROUP BY m.id
+        ORDER BY r.rating DESC, title
+        LIMIT 500
+    '''.format(
+        genre_filter=movie_filter.get_genre_sql(),
+        decade_filter=movie_filter.get_decade_sql(),
+    )
+
+    args = ([reviewer.id] + [user.id] +
+            movie_filter.genres + movie_filter.decades)
+
+    cursor.execute(sql, args)
+
+    return [
+        Movie(id=movie_id, title=title, year=year, imdb_id=imdb_id,
+              user_rating=user_rating, reviewer_rating=reviewer_rating,
+              saved=movie_id in saves and not user_rating,
+              skipped=movie_id in skips and not user_rating
+        )
+        for movie_id, title, year, imdb_id, user_rating, reviewer_rating
+        in cursor
+    ]
+
+
+def load_recommended_movies(user, movie_filter, limit=NUM_RECOMMENDED_MOVIES):
+    cursor = get_db().cursor()
+
+    excluded_movie_ids = (
+        user.load_ratings().keys() +
+        user.load_skips() +
+        user.load_saves()
+    )
+
+    sql = '''
+        SELECT id, title, year, imdb_id, ur.rating, AVG(r.rating), COUNT(DISTINCT reviewer_id), GROUP_CONCAT(reviewer_id, ',')
+        FROM movie m
+        JOIN user_similar_reviewer_review r
+        ON r.movie_id = m.id
+        AND r.user_id = %s
+        LEFT JOIN user_rating ur
+        ON m.id = ur.movie_id
+        AND ur.user_id = %s
+        JOIN movie2genre g
+        ON g.movie_id = m.id
+        WHERE m.id NOT IN ({movies_placeholders})
+        AND {genre_filter}
+        AND {decade_filter}
+        GROUP BY m.id
+        HAVING {avg_rating_filter}
+        ORDER BY COUNT(DISTINCT reviewer_id) DESC
+        LIMIT %s
+    '''.format(
+        movies_placeholders=', '.join(['%s'] * len(excluded_movie_ids)),
+        genre_filter=movie_filter.get_genre_sql(),
+        decade_filter=movie_filter.get_decade_sql(),
+        avg_rating_filter=movie_filter.get_avg_rating_sql(),
+    )
+
+    args = (
+        [user.id] +
+        [user.id] +
+        excluded_movie_ids +
+        movie_filter.genres +
+        movie_filter.decades +
+        movie_filter.stars +
+        [limit * 2]
+    )
+
+    cursor.execute(sql, args)
+
+    movies = [
+        Movie(id=movie_id, title=title, year=year, imdb_id=imdb_id,
+              user_rating=user_rating, mean_rating=mean_rating,
+              num_ratings=num_ratings,
+              reviewers=[Reviewer(int(r))
+                         for r in set(reviewers.split(',')) if r])
+        for (movie_id, title, year, imdb_id, user_rating,
+             mean_rating, num_ratings, reviewers)
+        in cursor
+    ]
+
+    if len(movies) > limit:
+        return random.sample(movies, limit)
+
+    return movies
+
+
+def load_user_by_id(user_id):
+    cursor = get_db().cursor()
+    cursor.execute('''
+        SELECT username
+        FROM user
+        WHERE id = %s
+    ''', (user_id, ))
+    row = cursor.fetchone()
+    if row:
+        return User(user_id, row[0])
+    raise NoSuchUser()
+
+
+class NoSuchUser(Exception):
+    pass
+
+
+class BadPassword(Exception):
+    pass
+
+
+def load_user_by_username_and_password(username, password):
+    cursor = get_db().cursor()
+    cursor.execute('''
+        SELECT id, password
+        FROM user
+        WHERE username = %s
+    ''', (username, ))
+    row = cursor.fetchone()
+    if not row:
+        raise NoSuchUser()
+    user_id, hashed = row
+    if bcrypt.hashpw(password.encode('utf-8'), hashed) != hashed:
+        raise BadPassword()
+
+    return User(user_id, username)
+
+
+def create_user(username, password):
+    cursor = get_db().cursor()
+    hashed = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+    cursor.execute('''
+        INSERT INTO user (username, password)
+        VALUES (%s, %s)
+    ''', (username, hashed))
+
+
+def iter_users():
+    cursor = get_db().cursor()
+    cursor.execute('''
+        SELECT id, username
+        FROM user
+    ''')
+    for user_id, username in cursor:
+        yield User(user_id, username)
+
+
+def check_signed_in(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if 'user_id' in session:
+            try:
+                load_user_by_id(session['user_id'])
+                return redirect(url_for('curate'))
+            except NoSuchUser, BadPassword:
+                del session['user_id']
+        return f(*args, **kwargs)
+    return wrapper
+
+
+def require_user(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if 'user_id' not in session:
+            return redirect(url_for('index'))
+        try:
+            user = load_user_by_id(session['user_id'])
+        except NoSuchUser:
+            del session['user_id']
+            return redirect(url_for('index'))
+        return f(user, *args, **kwargs)
+    return wrapper
 
 
 @app.route('/')
+@check_signed_in
 def index():
-    if session_contains('liked_movie_ids'):
-        liked_movie_ids = session_get('liked_movie_ids')
-        liked_movies = [load_movie_by_id(movie_id)
-                        for movie_id in liked_movie_ids]
-    else:
-        liked_movies = []
+    error = session.pop('error', None)
+    username = session.pop('username', '')
 
-    error = session_pop('error', None)
-    previous_title = session_pop('previous_title', '')
+    return render_template('index.html', error=error, username=username)
 
-    session_delete('recs')
 
-    return render_template('index.html', liked_movies=liked_movies,
-                           error=error, previous_title=previous_title,
-                           **session_params())
+@app.route('/sign-in', methods=['POST'])
+@check_signed_in
+def sign_in():
+    if 'username' not in request.form:
+        session['error'] = 'Please enter a username'
+        return redirect(url_for('index'))
+
+    if 'password' not in request.form:
+        session['error'] = 'Please enter a password'
+        return redirect(url_for('index'))
+
+    username = request.form['username']
+    password = request.form['password']
+
+    if len(username) > 512:
+        session['error'] = 'Username must be shorter than 512 characters'
+        session['username'] = username[:512]
+        return redirect(url_for('index'))
+
+    try:
+        user = load_user_by_username_and_password(username, password)
+    except BadPassword:
+        session['error'] = 'Wrong password'
+        session['username'] = username
+        return redirect(url_for('index'))
+    except NoSuchUser:
+        create_user(username, password)
+        user = load_user_by_username_and_password(username, password)
+
+    session['user_id'] = user.id
+
+    return redirect(url_for('curate'))
+
+
+@app.route('/curate')
+@require_user
+def curate(user):
+    movie_filter = movie_filter_from_session()
+    rated_movie_ids = user.load_ratings().keys()
+    skipped_movie_ids = user.load_skips()
+
+    movies = load_movies_for_user(
+        user, movie_filter,
+        rated_movie_ids + skipped_movie_ids,
+    )
+
+    movies_by_id = {m.id: m for m in movies}
+
+    rated_movies = [movies_by_id[movie_id] for movie_id in rated_movie_ids
+                    if movie_id in movies_by_id]
+    skipped_movies = [movies_by_id[movie_id]._replace(skipped=True)
+                      for movie_id in skipped_movie_ids
+                      if movie_id in movies_by_id]
+
+    return render_template(
+        'curate.html', user=user, movie_filter=movie_filter,
+        rated_movies=rated_movies, skipped_movies=skipped_movies)
+
+
+@app.route('/saves')
+@require_user
+def saves_view(user):
+    movie_filter = movie_filter_from_session()
+    saved_movie_ids = user.load_saves()
+
+    movies = load_movies_for_user(
+        user, movie_filter, saved_movie_ids
+    )
+
+    saved_movies = [
+        m._replace(saved=True)
+        for m in sorted(movies, key=lambda m: m.mean_rating, reverse=True)
+    ]
+
+    return render_template(
+        'saves.html', user=user, movie_filter=movie_filter,
+        saved_movies=saved_movies)
 
 
 @app.route('/add-movie', methods=['POST'])
-def add_movie():
+@require_user
+def add_movie(user):
     title_year = request.form['title-year'].lower()
     match = re.match(r'^(.+) \(([0-9]{4})\)$', title_year)
     if not match:
-        session_put('previous_title', title_year)
-        session_put('error', 'Title must be in the format "title (year)"')
-        return redirect(url_for_with_session('index'))
+        session['error'] = 'Title must be in the format "title (year)"'
+        return redirect(url_for('curate'))
 
     title, year = match.groups()
+    print title, year
     movie = load_movie_by_title_year(title, year)
     if not movie:
-        session_put('previous_title', title_year)
-        session_put('error', '"%s (%s)" is not in the database' % (title, year))
-        return redirect(url_for_with_session('index'))
+        session['error'] = '"%s (%s)" is not in the database' % (title, year)
+        return redirect(url_for('curate'))
 
-    liked_movie_ids = session_get('liked_movie_ids', [])
-    liked_movie_ids.append(movie.id)
-    session_put('liked_movie_ids', liked_movie_ids)
+    user.rate_movie_id(movie.id, 5)
 
-    return redirect(url_for_with_session('index'))
-
-
-@app.route('/remove-movie')
-def remove_movie():
-    movie_id = int(request.args.get('id'))
-    liked_movie_ids = session_get('liked_movie_ids', [])
-    liked_movie_ids.remove(movie_id)
-    session_put('liked_movie_ids', liked_movie_ids)
-
-    return redirect(url_for_with_session('index'))
+    return redirect(url_for('curate'))
 
 
 @app.route('/autocomplete/titles')
@@ -381,173 +826,119 @@ def autocomplete_titles():
     })
 
 
-@app.route('/tune')
-def tune():
-    if not session_contains('liked_movie_ids'):
-        print get_session()
-        return redirect(url_for('index'))
+@app.route('/discover')
+@require_user
+def discover(user):
+    movie_filter = movie_filter_from_session()
+    movies = load_recommended_movies(user, movie_filter)
 
-    min_rating = session_get('min_rating', 4.5)
-    max_rating = session_get('max_rating', 5.0)
-    min_reviews = session_get('min_reviews', 1)
-    max_reviews = session_get('max_reviews', NUM_SIMILAR_USERS)
-    min_year = session_get('min_year', 1891)
-    max_year = session_get('max_year', 2015)
-    genres = session_get('genres', all_genres)
-
-    skips = session_get('skips', [])
-    saves = session_get('saves', [])
-    recs = session_get('recs', None)
-    ratings = get_ratings()
-
-    if recs and len(recs) > 0:
-        recs = [r for r in recs if r not in skips + saves + ratings.keys()]
-        if not recs:
-            recs = None
-
-    similar_users = get_similar_users(ratings)
-
-    if recs is None:
-        recs = get_recs(
-            ratings=ratings,
-            similar_users=similar_users,
-            skips=skips, saves=saves,
-            min_rating=min_rating, max_rating=max_rating,
-            min_reviews=min_reviews,
-            max_reviews=max_reviews,
-            min_year=min_year, max_year=max_year,
-            genres=genres,
-        )
-
-        print '----------> finished making recs'
-
-        session_put('recs', recs)
-        return redirect(url_for_with_session('tune'))
-
-    movies = [load_movie_by_id(movie_id, similar_users=similar_users)
-              for movie_id in recs]
-    return render_template(
-        'tune.html', movies=movies,
-        min_rating=min_rating, max_rating=max_rating,
-        min_reviews=min_reviews,
-        max_reviews=max_reviews,
-        min_year=min_year, max_year=max_year,
-        genres=genres,
-        all_genres=all_genres,
-        **session_params()
-    )
+    return render_template('discover.html', movies=movies, user=user)
 
 
-@app.route('/skip')
-def skip():
-    movie_id = int(request.args['id'])
-    skips = session_get('skips', [])
-    if movie_id not in skips:
-        skips.append(movie_id)
-    session_put('skips', skips)
-
-    return redirect(url_for_with_session('tune'))
+@app.route('/movie/<int:movie_id>')
+@require_user
+def movie_view(user, movie_id):
+    movie = load_movie_for_user(movie_id, user)
+    return render_template('movie_view.html', movie=movie, user=user)
 
 
-@app.route('/save')
-def save():
-    movie_id = int(request.args['id'])
-    saves = session_get('saves', [])
-    if movie_id not in saves:
-        saves.append(movie_id)
-    session_put('saves', saves)
-
-    return redirect(url_for_with_session('tune'))
+@app.route('/movie/<int:movie_id>/ajax/reviewer/<int:reviewer_id>')
+@require_user
+def movie_ajax_reviewer(user, movie_id, reviewer_id):
+    movie = load_movie_for_reviewer(movie_id, reviewer_id, user)
+    return render_template('movie.html', movie=movie, user=user)
 
 
-@app.route('/rate')
-def rate():
-    movie_id = int(request.args['id'])
-    rating = float(request.args['rating'])
-    ratings = session_get('ratings', {})
-    ratings[movie_id] = rating
-
-    session_put('ratings', ratings)
-    return redirect(url_for_with_session('tune'))
+@app.route('/movie/<int:movie_id>/rate')
+@require_user
+def rate(user, movie_id):
+    rating = request.args['rating']
+    user.rate_movie_id(movie_id, rating)
+    return 'ok'
 
 
-def handle_options():
-    min_rating = float(request.form['min-rating'])
-    max_rating = float(request.form['max-rating'])
-    min_reviews = int(request.form.get('min-reviews', session_get('min_reviews', 1)))
-    max_reviews = int(request.form.get('max-reviews', session_get('max_reviews', NUM_SIMILAR_USERS)))
-    min_year = int(request.form['min-year'])
-    max_year = int(request.form['max-year'])
-    genres = request.form.getlist('genres')
-
-    session_put('min_rating', min_rating)
-    session_put('max_rating', max_rating)
-    session_put('min_reviews', min_reviews)
-    session_put('max_reviews', max_reviews)
-    session_put('min_year', min_year)
-    session_put('max_year', max_year)
-    session_put('genres', genres)
-    session_delete('recs')
+@app.route('/movie/<int:movie_id>/save')
+@require_user
+def save(user, movie_id):
+    user.save_movie_id(movie_id)
+    return 'ok'
 
 
-@app.route('/update-options', methods=['POST'])
-def update_options():
-    handle_options()
-    return redirect(url_for_with_session('tune'))
+@app.route('/movie/<int:movie_id>/skip')
+@require_user
+def skip(user, movie_id):
+    user.skip_movie_id(movie_id)
+    return 'ok'
 
 
-@app.route('/update-reviewer-options/<user_id>', methods=['POST'])
-def update_reviewer_options(user_id):
-    handle_options()
-    return redirect(url_for_with_session('reviewer', user_id=user_id))
+@app.route('/movie/<int:movie_id>/unsave')
+@require_user
+def unsave(user, movie_id):
+    user.unsave_movie_id(movie_id)
+    return 'ok'
 
 
-@app.route('/reviewer/<user_id>')
-def reviewer(user_id):
-    user_id = int(user_id)
-    min_rating = session_get('min_rating', 4.5)
-    max_rating = session_get('max_rating', 5.0)
-    min_year = session_get('min_year', 1891)
-    max_year = session_get('max_year', 2015)
-    genres = session_get('genres', all_genres)
-
-    recs = get_recs(
-        ratings={},
-        similar_users=[user_id],
-        skips=[], saves=[],
-        min_rating=min_rating, max_rating=max_rating,
-        min_reviews=1,
-        max_reviews=1,
-        min_year=min_year, max_year=max_year,
-        genres=genres,
-        count=100,
-        sort='rating',
-    )
-
-    print '----------> finished making recs'
-
-    movies = [load_movie_by_id(movie_id, similar_users=[user_id])
-              for movie_id in recs]
-
-    return render_template(
-        'reviewer.html', movies=movies,
-        min_rating=min_rating, max_rating=max_rating,
-        min_reviews=1, max_reviews=1,
-        min_year=min_year, max_year=max_year,
-        genres=genres,
-        all_genres=all_genres,
-        user=User(user_id),
-        **session_params()
-    )
+@app.route('/movie/<int:movie_id>/unskip')
+@require_user
+def unskip(user, movie_id):
+    user.unskip_movie_id(movie_id)
+    return 'ok'
 
 
-@app.route('/saves')
-def list_saves():
-    ratings = get_ratings()
-    similar_users = get_similar_users(ratings)
-    movies = [load_movie_by_id(movie_id, similar_users)
-              for movie_id in session_get('saves', [])]
-    return render_template('saves.html', movies=movies, **session_params())
+@app.route('/movie/<int:movie_id>/unrate')
+@require_user
+def unrate(user, movie_id):
+    user.unrate_movie_id(movie_id)
+    return 'ok'
+
+
+@app.route('/your25')
+@require_user
+def your25(user):
+    reviewers = user.load_similar_reviewers()
+    return render_template('your25.html', user=user, reviewers=reviewers)
+
+
+@app.route('/reviewer/<int:reviewer_id>')
+@require_user
+def reviewer_view(user, reviewer_id):
+    movie_filter = movie_filter_from_session()
+    reviewer = user.load_reviewer_by_id(reviewer_id)
+    movies = load_movies_for_reviewer(reviewer, user, movie_filter)
+
+    return render_template('reviewer_view.html', user=user, reviewer=reviewer,
+                           movies=movies)
+
+
+@app.route('/filter')
+@require_user
+def filter_view(user):
+    movie_filter = movie_filter_from_session()
+    decades = all_decades
+    return render_template('filter.html', user=user, filter=movie_filter,
+                           genres=all_genres, decades=decades)
+
+
+@app.route('/filter', methods=['POST'])
+@require_user
+def update_filter(user):
+    movie_filter = movie_filter_from_form(request.form)
+    session['movie_filter'] = movie_filter
+
+    return 'ok'
+
+
+@app.route('/update-similar-reviewers')
+def update_similar_reviewers():
+    if time.time() - last_update_time < 60:
+        return 'wait'
+
+    for user in iter_users():
+        latest_rating_time = user.load_latest_rating_time()
+        if latest_rating_time > time.time() - 60:
+            user.update_similar_reviewers()
+
+    return 'done'
 
 
 if __name__ == '__main__':

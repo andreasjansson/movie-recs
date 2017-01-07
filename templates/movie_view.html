@@ -1,0 +1,56 @@
+{% include 'header.html' %}
+
+{% include 'menu.html' %}
+
+<div class="row">
+  <div class="col-xs-12 col-sm-4">
+    {% include 'movie.html' %}
+
+    {% if movie.saved %}
+    <a class="ajax-movie-control" href="/movie/{{ movie.id }}/unsave">Un-save</a>
+    {% endif %}
+    {% if movie.skipped %}
+    <a class="ajax-movie-control" href="/movie/{{ movie.id }}/unskip">Un-skip</a>
+    {% endif %}
+
+    {% if movie.user_rating %}
+    <a class="ajax-movie-control" href="/movie/{{ movie.id }}/unrate">Un-rate</a>
+    {% for rating in [1, 2, 3, 4, 5] %}
+    <a class="ajax-movie-control" href="/movie/{{ movie.id }}/rate?rating={{ rating }}">{{ rating }}</a>
+    {% endfor %}
+    {% endif %}
+
+  </div>
+
+  <div class="col-xs-12 col-sm-4" id="movie-info">
+    <h2>Movie info</h2>
+    <p id="movie-year">Year: {{ movie.year }}</p>
+    <p id="movie-country"></p>
+    <p id="movie-duration"></p>
+    <p id="movie-plot"></p>
+    <p id="imdb-link">
+      <a target="_blank" href="{{ movie.imdb_link() }}">IMDB link <img src="/images/external-link.png" class="external-link" /></a>
+    </p>
+
+  </div>
+
+</div>
+
+<div class="row">
+  <h2 class="col-xs-12">Reviews</h2>
+  {% for reviewer, rating in movie.reviews.items() %}
+  <div class="col-xs-12 col-sm-6 col-md-4 col-lg-3 reviewer">
+    {% include 'reviewer.html' %}
+
+    <div class="reviewer-stars stars" style="width: {{ 50 * rating }}px">
+      <div class="stars-wrapper" title="Rating: {{ rating | round(1) }}">
+        {% for _ in range(5) %}<img class="star" src="/images/star.png" />{% endfor %}
+      </div>
+    </div>
+
+
+  </div>
+  {% endfor %}
+</div>
+
+{% include 'footer.html' %}

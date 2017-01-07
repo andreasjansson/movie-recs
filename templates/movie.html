@@ -1,14 +1,82 @@
-<a href="{{ movie.imdb_link() }}">
-  {{ movie.title }}
-  <img class="imdb-image" data-imdb-id="{{ movie.imdb_id }}" src="/images/placeholder.jpg" />
-</a>
+<div class="movie" data-movie-id="{{ movie.id }}">
 
-{% if movie.ratings %}
-<ul>
-  {% for user, rating in movie.ratings.items() %}
-  <li>
-    <a href="/reviewer/{{ user.id }}?{{ session_param }}">{{ user.name() }}</a>: {{ rating }}/5
-  </li>
-  {% endfor %}
-</ul>
-{% endif %}
+  <a href="/movie/{{ movie.id }}">
+    <div class="movie-image-wrapper">
+      <img title="{{ movie.title | title }}" alt="{{ movie.title | title }}" class="movie-image imdb-image" data-imdb-id="{{ movie.imdb_id }}" src="/images/placeholder.jpg" />
+    </div>
+  </a>
+
+  <p class="movie-title"><a href="/movie/{{ movie.id }}">{{ movie.title | title | truncate(40) }}</a></p>
+
+  {% if movie.mean_rating %}
+
+  {% if movie.reviewers %}
+  <div class="mini-reviewers count-{{ 5 + (((movie.reviewers|length) / 5)|int) * 5 }}">
+    {% for reviewer in movie.reviewers %}
+    <a href="/reviewer/{{ reviewer.id }}">
+      <img class="mini-reviewer" src="/images/avatars/{{ reviewer.avatar() }}" title="{{ reviewer.name() }}" style="filter: hue-rotate({{ reviewer.hue() }}deg)" />
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <div class="stars" style="width: {{ 50 * movie.mean_rating }}px">
+    <div class="stars-wrapper" title="Mean rating: {{ movie.mean_rating | round(1) }}">
+      {% for _ in range(5) %}<img class="star" src="/images/star.png" />{% endfor %}
+    </div>
+  </div>
+
+  {% endif %}
+
+  {% if movie.user_rating %}
+
+  <div class="user-stars stars rated" style="width: {{ 50 * movie.user_rating }}px">
+    <div class="stars-wrapper" title="User rating: {{ movie.user_rating | round(1) }}">
+      {% for _ in range(5) %}<img class="star" src="/images/star.png" />{% endfor %}
+    </div>
+  </div>
+
+  {% endif %}
+
+  {% if movie.reviewer_rating %}
+
+  <div class="stars" style="width: {{ 50 * movie.reviewer_rating }}px">
+    <div class="stars-wrapper" title="Reviewer rating: {{ movie.reviewer_rating | round(1) }}">
+      {% for _ in range(5) %}<img class="star" src="/images/star.png" />{% endfor %}
+    </div>
+  </div>
+
+  {% endif %}
+
+  {% if not (movie.skipped or movie.saved or movie.user_rating) %}
+
+  <div class="user-stars stars">
+    <div class="stars-wrapper">
+      {% for rating in range(1, 6) %}<a class="ajax-movie-control" href="/movie/{{ movie.id }}/rate?rating={{ rating }}"><img data-rating="{{ rating }}" class="star open" src="/images/star-open.png" /></a>{% endfor %}
+    </div>
+  </div>
+
+  <div class="save-skip">
+    <a class="ajax-movie-control save" href="/movie/{{ movie.id }}/save">
+      Save
+    </a>
+    <a class="ajax-movie-control skip" href="/movie/{{ movie.id }}/skip">
+      Skip
+    </a>
+  </div>
+
+  {% endif %}
+
+
+  <div class="save-skip">
+    {% if movie.saved %}
+    <p class="saved">Saved</p>
+    {% endif %}
+
+    {% if movie.skipped %}
+    <p class="skipped">Skipped</p>
+    {% endif %}
+  </div>
+
+
+</div>

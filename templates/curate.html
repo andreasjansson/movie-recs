@@ -1,0 +1,47 @@
+{% include 'header.html' %}
+
+{% include 'menu.html' %}
+
+{% if error %}
+<div class="row">
+  <p class="col-xs-12" id="error">{{ error }}</p>
+</div>
+{% endif %}
+
+<div class="row">
+
+  <div class="sm-col-6 col-xs-12">
+    <div class="row">
+      <div class="col-xs-12">
+        <h2>Choose favorite movies</h2>
+        <form class="form-inline" action="/add-movie" method="POST" id="add-movie-form">
+          <div class="form-group">
+            <label for="title-year">Title</label>
+            <input type="text" id="title-year" name="title-year" value="{{ previous_title }}" class="form-control" />
+          </div>
+          <input type="submit" value="Add movie" class="btn btn-default" />
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row">
+  <h2 class="col-xs-12">Your ratings</h2>
+  {% for movie in rated_movies %}
+  <div class="col-xs-12 col-sm-6 col-md-4 col-lg-3">
+    {% include 'movie.html' %}
+  </div>
+  {% endfor %}
+</div>
+
+<div class="row">
+  <h2 class="col-xs-12">Your skips</h2>
+  {% for movie in skipped_movies %}
+  <div class="col-xs-12 col-sm-6 col-md-4 col-lg-3">
+    {% include 'movie.html' %}
+  </div>
+  {% endfor %}
+</div>
+
+{% include 'footer.html' %}
