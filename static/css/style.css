@@ -102,7 +102,7 @@ body, html {
     margin-left: 20px;
 }
 
-.mini-reviewers {
+.mini-critics {
     position: absolute;
     top: 115px;
     z-index: 40;
@@ -111,24 +111,25 @@ body, html {
     overflow: hidden;
 }
 
-.mini-reviewer {
+.mini-critic {
+    clip-path: circle(25px at center);
     width: 50px;
     margin-right: -20px;
     transform: rotate(-20deg);
     display: inline-block;
 }
 
-.mini-reviewers.count-5 .mini-reviewer { margin-right: -20px; }
-.mini-reviewers.count-10 .mini-reviewer { margin-right: -27px; }
-.mini-reviewers.count-15 .mini-reviewer { margin-right: -34px; }
-.mini-reviewers.count-20 .mini-reviewer { margin-right: -41px; }
-.mini-reviewers.count-25 .mini-reviewer { margin-right: -45px; }
+.mini-critics.count-5 .mini-critic { margin-right: -20px; }
+.mini-critics.count-10 .mini-critic { margin-right: -27px; }
+.mini-critics.count-15 .mini-critic { margin-right: -34px; }
+.mini-critics.count-20 .mini-critic { margin-right: -41px; }
+.mini-critics.count-25 .mini-critic { margin-right: -45px; }
 
-.reviewer {
+.critic {
     height: 180px;
 }
 
-.reviewer a {
+.critic a {
     color: #FFEAB9;
     text-shadow:
     -1px -1px 0 #000,
@@ -137,12 +138,12 @@ body, html {
     1px 1px 0 #000;
 }
 
-.reviewer img {
+.critic img {
     display: block;
     margin: auto;
 }
 
-.reviewer-name {
+.critic-name {
     display: block;
     position: relative;
     left: 50%;
@@ -154,7 +155,7 @@ body, html {
     font-size: 20px;
 }
 
-.reviewer-stars {
+.critic-stars {
     top: 100px;
 }
 
@@ -192,4 +193,8 @@ body, html {
 .autocomplete-group strong {
     display: block;
     border-bottom: 1px solid #000;
+}
+
+.filter {
+    font-size: 18px;
 }

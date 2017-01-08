@@ -25,24 +25,30 @@
   <div class="col-xs-12 col-sm-4" id="movie-info">
     <h2>Movie info</h2>
     <p id="movie-year">Year: {{ movie.year }}</p>
-    <p id="movie-country"></p>
-    <p id="movie-duration"></p>
-    <p id="movie-plot"></p>
-    <p id="imdb-link">
-      <a target="_blank" href="{{ movie.imdb_link() }}">IMDB link <img src="/images/external-link.png" class="external-link" /></a>
-    </p>
-
+    {% if movie.director %}
+    <p id="movie-director">Director: {{ movie.director }}</p>
+    {% endif %}
+    {% if movie.duration %}
+    <p id="movie-duration">Running time: {{ movie.duration }}</p>
+    {% endif %}
+    {% if movie.genres %}
+    <p id="movie-plot">Genres: {{ movie.genres | join(', ') }}</p>
+    {% endif %}
+    <p><a href="{{ movie.rotten_tomatoes_link() }}" target="_blank">Rotten Tomatoes <img src="/images/external-link.png" class="external-link" /></a></p>
+    {% if movie.plot %}
+    <p id="movie-plot">{{ movie.plot }}</p>
+    {% endif %}
   </div>
 
 </div>
 
 <div class="row">
   <h2 class="col-xs-12">Reviews</h2>
-  {% for reviewer, rating in movie.reviews.items() %}
-  <div class="col-xs-12 col-sm-6 col-md-4 col-lg-3 reviewer">
-    {% include 'reviewer.html' %}
+  {% for critic, rating in movie.reviews.items() %}
+  <div class="col-xs-12 col-sm-6 col-md-4 col-lg-3 critic">
+    {% include 'critic.html' %}
 
-    <div class="reviewer-stars stars" style="width: {{ 50 * rating }}px">
+    <div class="critic-stars stars" style="width: {{ 50 * rating }}px">
       <div class="stars-wrapper" title="Rating: {{ rating | round(1) }}">
         {% for _ in range(5) %}<img class="star" src="/images/star.png" />{% endfor %}
       </div>

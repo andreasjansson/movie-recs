@@ -1,6 +1,5 @@
 $(function() {
     route();
-    replaceImdbImages();
 
     $('body').on('mouseover', '.star.open', openStarMouseover);
     $('body').on('mouseout', '.star.open', openStarMouseout);
@@ -11,7 +10,7 @@ function route() {
         '/curate': curate,
         '/discover': discover,
         '/filter': filter,
-        '/reviewer/[^/]+$': reviewer,
+        '/critic/[^/]+$': critic,
         '/movie/[^/]+$': movie
     }
 
@@ -28,8 +27,8 @@ function discover() {
     $('a.ajax-movie-control').on('click', discoverAjaxMovieControlClick);
 }
 
-function reviewer() {
-    $('a.ajax-movie-control').on('click', reviewerAjaxMovieControlClick);
+function critic() {
+    $('a.ajax-movie-control').on('click', criticAjaxMovieControlClick);
 }
 
 function curate() {
@@ -51,8 +50,6 @@ function filter() {
 
 function movie() {
     $('a.ajax-movie-control').on('click', ajaxMovieControlClickRefresh);
-
-    $('img').on('omdb-response', populateMovieInfo);
 }
 
 function openStarMouseover(e) {
@@ -76,12 +73,6 @@ function openStarMouseout(e) {
     $stars.attr('src', '/images/star-open.png');
 }
 
-function populateMovieInfo(e, r) {
-    $('#movie-country').text('Country: ' + r.Country);
-    $('#movie-duration').text('Runtime: ' + r.Runtime);
-    $('#movie-plot').text(r.Plot);
-}
-
 function discoverAjaxMovieControlClick(e) {
     e.preventDefault();
 
@@ -97,7 +88,7 @@ function discoverAjaxMovieControlClick(e) {
     return false;
 }
 
-function reviewerAjaxMovieControlClick(e) {
+function criticAjaxMovieControlClick(e) {
     e.preventDefault();
 
     var $a = $(e.target).closest('a');
@@ -105,8 +96,8 @@ function reviewerAjaxMovieControlClick(e) {
 
     var $movie = $a.closest('.movie');
     var movieId = $movie.data('movie-id');
-    var reviewerId = $('#wrapper').data('reviewer-id');
-    var url = '/movie/' + movieId + '/ajax/reviewer/' + reviewerId;
+    var criticId = $('#wrapper').data('critic-id');
+    var url = '/movie/' + movieId + '/ajax/critic/' + criticId;
 
     $a.addClass('selected');
 
@@ -114,7 +105,6 @@ function reviewerAjaxMovieControlClick(e) {
         $.get(url, function(html) {
             console.log(html);
             $movie.replaceWith(html);
-            replaceImdbImages();
         });
     });
 
@@ -132,37 +122,6 @@ function ajaxMovieControlClickRefresh(e) {
     });
 
     return false;
-}
-
-function replaceImdbImages() {
-    $('.imdb-image').on('omdb-response', handleOmdbResponse);
-    $('.imdb-image').each(replaceImdbImage);
-}
-
-function handleOmdbResponse(e, r) {
-    var $el = $(e.target);
-    var imageUrl = r['Poster'];
-    $el.attr('src', imageUrl);
-
-    var title = $el.attr('title');
-
-    title += '\n' + r.Country + ', ' + r.Year + '\n' +
-        r.Runtime + '\n\n' + r.Plot;
-
-    $el.attr('title', title);
-}
-
-function replaceImdbImage(i, el) {
-    var $el = $(el);
-    var imdbId = $el.data('imdb-id');
-    $.getJSON('http://www.omdbapi.com',
-              {i: 'tt' + imdbId,
-               plot: 'short',
-               r: 'json'}, function(r) {
-                   $el.trigger('omdb-response', [r])
-               });
-
-    $el.removeClass('imdb-image');
 }
 
 function setupEnableAll($div) {

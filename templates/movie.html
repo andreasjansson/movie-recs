@@ -2,7 +2,7 @@
 
   <a href="/movie/{{ movie.id }}">
     <div class="movie-image-wrapper">
-      <img title="{{ movie.title | title }}" alt="{{ movie.title | title }}" class="movie-image imdb-image" data-imdb-id="{{ movie.imdb_id }}" src="/images/placeholder.jpg" />
+      <img title="{{ movie.html_title() }}" alt="{{ movie.title }}" class="movie-image imdb-image" src="{{ movie.image }}" />
     </div>
   </a>
 
@@ -10,11 +10,11 @@
 
   {% if movie.mean_rating %}
 
-  {% if movie.reviewers %}
-  <div class="mini-reviewers count-{{ 5 + (((movie.reviewers|length) / 5)|int) * 5 }}">
-    {% for reviewer in movie.reviewers %}
-    <a href="/reviewer/{{ reviewer.id }}">
-      <img class="mini-reviewer" src="/images/avatars/{{ reviewer.avatar() }}" title="{{ reviewer.name() }}" style="filter: hue-rotate({{ reviewer.hue() }}deg)" />
+  {% if movie.critics %}
+  <div class="mini-critics count-{{ 5 + (((movie.critics|length) / 5)|int) * 5 }}">
+    {% for critic in movie.critics %}
+    <a href="/critic/{{ critic.id }}">
+      <img class="mini-critic" src="{{ critic.image_url() }}" title="{{ critic.name }}" />
     </a>
     {% endfor %}
   </div>
@@ -38,10 +38,10 @@
 
   {% endif %}
 
-  {% if movie.reviewer_rating %}
+  {% if movie.critic_rating %}
 
-  <div class="stars" style="width: {{ 50 * movie.reviewer_rating }}px">
-    <div class="stars-wrapper" title="Reviewer rating: {{ movie.reviewer_rating | round(1) }}">
+  <div class="stars" style="width: {{ 50 * movie.critic_rating }}px">
+    <div class="stars-wrapper" title="Reviewer rating: {{ movie.critic_rating | round(1) }}">
       {% for _ in range(5) %}<img class="star" src="/images/star.png" />{% endfor %}
     </div>
   </div>

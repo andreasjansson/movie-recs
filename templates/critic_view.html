@@ -1,0 +1,22 @@
+{% include 'header.html' %}
+
+{% include 'menu.html' %}
+
+<div id="wrapper" data-critic-id="{{ critic.id }}" class="row">
+
+  <div class="col-xs-12 col-sm-4">
+    {% include 'critic.html' %}
+    <a href="{{ critic.rotten_tomatoes_link() }}">Rotten Tomatoes link <img src="/images/external-link.png" class="external-link" /></a>
+  </div>
+
+</div>
+
+<div class="row">
+  {% for movie in movies %}
+  <div class="col-xs-12 col-sm-6 col-md-4 col-lg-3">
+    {% include 'movie.html' %}
+  </div>
+  {% endfor %}
+</div>
+
+{% include 'footer.html' %}
