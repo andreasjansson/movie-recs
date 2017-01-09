@@ -1,0 +1,63 @@
+{% include 'header.html' %}
+
+{% include 'menu.html' %}
+
+{% if error %}
+<div class="row">
+  <p class="col-xs-12" id="error">{{ error }}</p>
+</div>
+{% endif %}
+
+<div class="row">
+  <h1 class="col-xs-12">Search</h1>
+</div>
+
+<div class="row">
+  <div class="sm-col-6 col-xs-12">
+    <div class="row">
+      <div class="col-xs-12">
+        <h2>By title</h2>
+        <form class="form-inline" action="/search-title" method="POST" id="title-form">
+          <div class="form-group">
+            <input type="text" id="title-year" name="title-year" class="form-control" />
+          </div>
+          <input type="submit" value="Search" class="btn btn-default" />
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row">
+  <div class="sm-col-6 col-xs-12">
+    <div class="row">
+      <div class="col-xs-12">
+        <h2>By director</h2>
+        <form class="form-inline" action="/search-director" method="POST" id="director-form">
+          <div class="form-group">
+            <input type="text" id="director-input" name="name" class="form-control" />
+          </div>
+          <input type="submit" value="Search" class="btn btn-default" />
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row">
+  <div class="sm-col-6 col-xs-12">
+    <div class="row">
+      <div class="col-xs-12">
+        <h2>By critic</h2>
+        <form class="form-inline" action="/search-critic" method="POST" id="critic-form">
+          <div class="form-group">
+            <input type="text" id="critic-input" name="name" class="form-control" />
+          </div>
+          <input type="submit" value="Search" class="btn btn-default" />
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% include 'footer.html' %}

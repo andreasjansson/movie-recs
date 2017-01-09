@@ -26,7 +26,7 @@
     <h2>Movie info</h2>
     <p id="movie-year">Year: {{ movie.year }}</p>
     {% if movie.director %}
-    <p id="movie-director">Director: {{ movie.director }}</p>
+    <p id="movie-director">Director: <a href="/director/{{ movie.director_id() }}">{{ movie.director }}</a></p>
     {% endif %}
     {% if movie.duration %}
     <p id="movie-duration">Running time: {{ movie.duration }}</p>

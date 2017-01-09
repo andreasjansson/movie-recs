@@ -8,15 +8,15 @@
 import scrapy
 
 
-class Reviewer(scrapy.Item):
-    id = scrapy.Field()
+class Critic(scrapy.Item):
+    link = scrapy.Field()
     name = scrapy.Field()
     image = scrapy.Field()
 
 
 class Review(scrapy.Item):
-    reviewer_id = scrapy.Field()
-    movie_id = scrapy.Field()
+    critic_link = scrapy.Field()
+    movie_link = scrapy.Field()
     rating = scrapy.Field()
     fresh = scrapy.Field()
 

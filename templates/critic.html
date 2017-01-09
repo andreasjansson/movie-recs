@@ -1,6 +1,6 @@
 <div class="critic">
-<a href="/critic/{{ critic.id }}">
+<a href="/critic/{{ critic.id }}" title="{{ critic.html_title() }}">
   <span class="critic-name">{{ critic.name }}</span>
-  <img src="{{ critic.image_url() }}" />
+  <img class="critic-image" src="{{ critic.image_url() }}" />
 </a>
 </div>

@@ -10,8 +10,10 @@ function route() {
         '/curate': curate,
         '/discover': discover,
         '/filter': filter,
-        '/critic/[^/]+$': critic,
-        '/movie/[^/]+$': movie
+        '/critic/[^/]+': critic,
+        '/movie/[^/]+': movie,
+        '/search': search,
+        '/director/[^/]+': director
     }
 
     for (key in routes) {
@@ -31,6 +33,10 @@ function critic() {
     $('a.ajax-movie-control').on('click', criticAjaxMovieControlClick);
 }
 
+function director() {
+    $('a.ajax-movie-control').on('click', directorAjaxMovieControlClick);
+}
+
 function curate() {
     $('#title-year').autocomplete({
         serviceUrl: '/autocomplete/titles',
@@ -45,11 +51,32 @@ function filter() {
     setupEnableAll($('#decades'));
     setupEnableAll($('#ratings'));
     $('#submit').hide();
-    $('input').click(submitFilterForm);
+    $('input[type=checkbox]').click(submitFilterForm);
 }
 
 function movie() {
     $('a.ajax-movie-control').on('click', ajaxMovieControlClickRefresh);
+}
+
+function search() {
+    $('#title-year').autocomplete({
+        serviceUrl: '/autocomplete/titles',
+        onSelect: function (suggestion) {
+            $('#title-form').submit()
+        }
+    });
+    $('#director-input').autocomplete({
+        serviceUrl: '/autocomplete/directors',
+        onSelect: function (suggestion) {
+            $('#director-form').submit()
+        }
+    });
+    $('#critic-input').autocomplete({
+        serviceUrl: '/autocomplete/critics',
+        onSelect: function (suggestion) {
+            $('#critic-form').submit()
+        }
+    });
 }
 
 function openStarMouseover(e) {
@@ -111,6 +138,28 @@ function criticAjaxMovieControlClick(e) {
     return false;
 }
 
+function directorAjaxMovieControlClick(e) {
+    e.preventDefault();
+
+    var $a = $(e.target).closest('a');
+    var href = $a.attr('href');
+
+    var $movie = $a.closest('.movie');
+    var movieId = $movie.data('movie-id');
+    var url = '/movie/' + movieId + '/ajax/user';
+
+    $a.addClass('selected');
+
+    $.get(href, function() {
+        $.get(url, function(html) {
+            console.log(html);
+            $movie.replaceWith(html);
+        });
+    });
+
+    return false;
+}
+
 function ajaxMovieControlClickRefresh(e) {
     var $a = $(e.target).closest('a');
     var href = $a.attr('href');
@@ -151,6 +200,8 @@ function setupEnableAll($div) {
         checkButtonsState();
 
         submitFilterForm();
+
+        return false;
     });
 
     $inputs.on('click', checkButtonsState);

@@ -4,6 +4,34 @@ body, html {
     font-size: 16px;
     background-color: black;
     color: #EEE;
+    background-image: url('/images/stars.jpg');
+    font-family: 'Questrial', sans-serif;
+}
+
+a {
+    color: #64c6f9;
+}
+
+.navbar-default {
+    border: none;
+}
+
+#menu {
+    color: #ff0;
+    font-family: 'Questrial', sans-serif;
+    font-size: 22px;
+    margin-bottom: 15px;
+}
+
+#menu a {
+    color: #ff0;
+    text-shadow:
+    -1px -1px 0 #333,
+    1px -1px 0 #333,
+    -1px 1px 0 #333,
+    1px 1px 0 #333;
+    padding: 10px 0;
+    display: block;
 }
 
 .form-control {
@@ -25,12 +53,12 @@ body, html {
 .movie-title a {
     font-size: 28px;
     font-family: 'Rock Salt', cursive;
-    color: #BAFFDC;
+    color: white;
     text-shadow:
-    -1px -1px 0 #000,
-    1px -1px 0 #000,
-    -1px 1px 0 #000,
-    1px 1px 0 #000;
+    -1px -1px 0 #333,
+    1px -1px 0 #333,
+    -1px 1px 0 #333,
+    1px 1px 0 #333;
 }
 
 .movie-image-wrapper {
@@ -90,7 +118,6 @@ body, html {
     position: absolute;
     top: 370px;
     margin-left: 10px;
-    font-family: 'Rock Salt', cursive;
     font-size: 20px;
 }
 
@@ -113,6 +140,7 @@ body, html {
 
 .mini-critic {
     clip-path: circle(25px at center);
+    -webkit-clip-path: circle(25px at center);
     width: 50px;
     margin-right: -20px;
     transform: rotate(-20deg);
@@ -130,26 +158,34 @@ body, html {
 }
 
 .critic a {
-    color: #FFEAB9;
+    color: white;
     text-shadow:
-    -1px -1px 0 #000,
-    1px -1px 0 #000,
-    -1px 1px 0 #000,
-    1px 1px 0 #000;
+    -1px -1px 0 #333,
+    1px -1px 0 #333,
+    -1px 1px 0 #333,
+    1px 1px 0 #333;
 }
 
-.critic img {
+.critic-image {
+    clip-path: circle(50px at center);
+    -webkit-clip-path: circle(50px at center);
     display: block;
-    margin: auto;
+    position: absolute;
+    top: 20px;
+    left: 50%;
+    margin-left: -50px;
+    width: 100px;
+    background-color: #43C161;
+
 }
 
 .critic-name {
     display: block;
     position: relative;
     left: 50%;
-    margin-left: -120px;
+    margin-left: -100px;
     width: 200px;
-    top: 40px;
+    top: 20px;
     z-index: 10;
     font-family: 'Rock Salt', cursive;
     font-size: 20px;
@@ -164,7 +200,7 @@ body, html {
     margin-top: -10px;
 }
 
-#title-year {
+#title-year, #director-input, #critic-input {
     min-width: 50vw;
 }
 
@@ -197,4 +233,18 @@ body, html {
 
 .filter {
     font-size: 18px;
+}
+
+.enable-disable-all {
+    display: block;
+    position: absolute;
+    top: 22px;
+}
+
+#footer {
+    margin-top: 40px;
+}
+
+#footer a {
+    color: yellow;
 }

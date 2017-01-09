@@ -25,28 +25,31 @@ class ReviewsSpider(scrapy.Spider):
             '.critic-names a[href*="/critic/"]::attr(href)'
         ).extract()
         for href in critic_hrefs:
-            yield scrapy.Request(url='https://www.rottentomatoes.com' + href,
-                                 callback=self.parse_reviewer)
+            link = re.match(r'^/critic/([^/]+)', href).groups()[0]
 
-    def parse_reviewer(self, response):
+            yield scrapy.Request(
+                url='https://www.rottentomatoes.com/critic/%s/movies' % link,
+                                 callback=self.parse_critic)
+
+    def parse_critic(self, response):
         css = response.selector.css
-        reviewer_id = response.url.split('/')[-1]
+        critic_link = response.url.split('/')[-1]
         name = css('#criticPanel h2.title::text')[0].extract().strip()
         image = css('.critic_thumb.fullWidth::attr(src)')[0].extract()
 
-        yield items.Reviewer(id=reviewer_id, name=name, image=image)
+        yield items.Critic(link=critic_link, name=name, image=image)
 
         for i in self.parse_reviews(response):
             yield i
 
     def parse_reviews(self, response):
-        reviewer_id = response.url.split('/')[-1].split('?')[0]
+        critic_link = re.search(r'/critic/([^/]+)/', response.url).groups()[0]
         page = int(response.url.split('?page=')[-1]) if '?page=' in response.url else 1
 
         css = response.selector.css
         rows = css('.table-striped tr')
 
-        print reviewer_id, page, len(rows)
+        print critic_link, page, len(rows)
 
         for row in rows[1:]:
             rating = row.css('td span::attr(title)')
@@ -54,12 +57,12 @@ class ReviewsSpider(scrapy.Spider):
                 rating = rating[0].extract()
             else:
                 rating = None
-            movie_id = row.css('.movie-link::attr(href)')[0].extract().split('/')[-1]
+            movie_link = row.css('.movie-link::attr(href)')[0].extract().split('/')[-1]
             first_classes = row.css('td span::attr(class)')[0].extract().strip()
             fresh = 'fresh' in first_classes
 
-            yield items.Review(reviewer_id=reviewer_id,
-                               movie_id=movie_id,
+            yield items.Review(critic_link=critic_link,
+                               movie_link=movie_link,
                                rating=rating,
                                fresh=fresh)
 
@@ -68,6 +71,6 @@ class ReviewsSpider(scrapy.Spider):
 
         if int(page_end) < int(total):
             yield scrapy.Request(
-                url='https://www.rottentomatoes.com/critic/%s?page=%d' % (
-                    reviewer_id, page + 1),
+                url='https://www.rottentomatoes.com/critic/%s/movies?page=%d' % (
+                    critic_link, page + 1),
                 callback=self.parse_reviews)

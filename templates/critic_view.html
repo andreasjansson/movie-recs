@@ -6,7 +6,15 @@
 
   <div class="col-xs-12 col-sm-4">
     {% include 'critic.html' %}
-    <a href="{{ critic.rotten_tomatoes_link() }}">Rotten Tomatoes link <img src="/images/external-link.png" class="external-link" /></a>
+  </div>
+
+  <div class="col-xs-12 col-sm-4">
+    <p>Rating similarity: {{ (20 * critic.rating_similarity) | round | int }}%</p>
+    <p>Acceptability: {{ (100 * critic.acceptability) | round | int }}%</p>
+    <p>Samesidedness: {{ (100 * critic.samesidedness) | round | int }}%</p>
+    <p>Shared reviews: {{ critic.num_shared_reviews }}</p>
+
+    <a href="{{ critic.rotten_tomatoes_link() }}" target="_blank">Rotten Tomatoes link <img src="/images/external-link.png" class="external-link" /></a>
   </div>
 
 </div>

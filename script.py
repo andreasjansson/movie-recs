@@ -66,9 +66,13 @@ def create_user_tables():
     cursor.execute('DROP TABLE IF EXISTS user_similar_critic')
     cursor.execute('''
         CREATE TABLE user_similar_critic (
-            user_id         INT,
-            critic_id       INT,
-            similarity      FLOAT,
+            user_id            INT,
+            critic_id          INT,
+            score              FLOAT,
+            rating_similarity  FLOAT,
+            acceptability      FLOAT,
+            num_shared_reviews INT,
+            samesidedness      FLOAT,
             date_inserted   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (user_id, critic_id),
             FOREIGN KEY (user_id) REFERENCES user (id)
@@ -117,8 +121,6 @@ def insert_movies():
         PRIMARY KEY (genre, movie_id),
         FOREIGN KEY (movie_id) REFERENCES movie(id)
     ) ENGINE=InnoDB''')
-
-    cursor.execute('SET FOREIGN_KEY_CHECKS=1')
 
     conn.commit()
 
@@ -182,7 +184,7 @@ def insert_critics():
         image           VARCHAR(128)
     ) ENGINE=InnoDB''')
 
-    cursor.execute('SET FOREIGN_KEY_CHECKS=1')
+    #cursor.execute('SET FOREIGN_KEY_CHECKS=1')
 
     conn.commit()
 
@@ -193,7 +195,7 @@ def insert_critics():
             r = json.loads(line)
             if 'name' in r:
                 critic_id = len(critic_id2link)
-                link = r['id']
+                link = r['link']
                 critic_id2link[critic_id] = link
                 image = r['image']
                 if image == 'https://staticv2-4.rottentomatoes.com/static/images/redesign/actor.default.tmb.gif':
@@ -241,9 +243,9 @@ def insert_reviews():
         for line in f:
             r = json.loads(line)
             if 'name' not in r:
-                critic_link = r['reviewer_id']
+                critic_link = r['critic_link']
                 critic_id = critic_id2link.inv[critic_link]
-                movie_link = r['movie_id']
+                movie_link = r['movie_link']
 
                 if not movie_link:
                     missing_movie_links += 1
@@ -284,6 +286,9 @@ def insert_reviews():
 
     # before i do something about just fresh/rotten
     cursor.execute('DELETE FROM review WHERE rating IS NULL')
+    conn.commit()
+
+    cursor.execute('create table meanratings as select movie_id, avg(rating) as meanrating from review group by movie_id')
     conn.commit()
 
     print 'missing movie links: %d/%d' % (missing_movie_links, i)
@@ -328,7 +333,12 @@ def translate_rating(r):
     if match:
         num, denom = match.groups()
         try:
-            return 5 * float(num) / float(denom)
+            rating = 5 * float(num) / float(denom)
+            if rating < 0 or rating > 5:
+                return None
+            if rating < 0.5:
+                rating = 0.5
+            return rating
         except (ValueError, ZeroDivisionError):
             return None
 
