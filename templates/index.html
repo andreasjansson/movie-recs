@@ -1,11 +1,13 @@
 {% include 'header.html' %}
 
 <div class="row">
-  <h1 class="col-xs-12">Movie recs</h1>
+  <div class="col-xs-12">
+    <h1 id="crap-movies" class="col-xs-12"><img src="/images/crap.png" alt="Don't watch crap movies!" /></h1>
+  </div>
 </div>
 
 <div class="row">
-  <h2 class="col-xs-12">Sign in or create account</h2>
+  <h1 class="col-xs-12">Sign in or create an account and stop watching crap movies!</h1>
 </div>
 
 {% if error %}
@@ -30,6 +32,11 @@
       </div>
     </form>
   </div>
+
+</div>
+
+<div id="username-explanation" class="row">
+  <p class="col-xs-12">Everything on this site is personalized to your taste in movies, which is why you have to create an account. But it's all anonymous, and you don't give anyone your email address. If you forget your password, send me your username to <span class="admin-email">andreas[at]jansson[dot]me[dot]uk</span> and I'll make you a reset-password link.</p>
 </div>
 
 {% include 'footer.html' %}

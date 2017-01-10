@@ -18,7 +18,7 @@ app = Flask(__name__, static_url_path='')
 app.secret_key = 'super super secret key'
 
 SALT = 'super super secret salt'
-NUM_SIMILAR_CRITICS = 25
+NUM_SIMILAR_CRITICS = 24
 NUM_RECOMMENDED_MOVIES = 24
 
 last_update_time = 0
@@ -145,6 +145,9 @@ class User(namedtuple('User', 'id username')):
                 for (critic_id, score, rating_similarity,
                      acceptability, num_shared_reviews, samesidedness) in cursor]
 
+    def has_similar_critics(self):
+        return bool(self.load_similar_critics())
+
     @object_cache
     def load_skips(self):
         cursor = get_db().cursor()
@@ -217,7 +220,7 @@ class User(namedtuple('User', 'id username')):
             SELECT
                 rating_similarity
                     * POWER(acceptability, 2)
-                    * POWER(num_shared_reviews, 1/2.)
+                    * POWER(num_shared_reviews, .5)
                     * POWER(samesidedness, 2) AS score,
                 rating_similarity,
                 acceptability,
@@ -264,7 +267,7 @@ class User(namedtuple('User', 'id username')):
                 critic_id,
                 rating_similarity
                     * POWER(acceptability, 2)
-                    * POWER(num_shared_reviews, 1/2.)
+                    * POWER(num_shared_reviews, .5)
                     * POWER(samesidedness, 2) AS score,
                 rating_similarity,
                 acceptability,
@@ -286,7 +289,7 @@ class User(namedtuple('User', 'id username')):
                 GROUP BY critic_id
             ) t
             ORDER BY score DESC
-            LIMIT %s;
+            LIMIT %s
         '''
 
         t = time.time()
@@ -344,6 +347,7 @@ class Movie(namedtuple('Movie', [
         'skipped',
         'reviews',
         'critics',
+        'actor_ids',
 ])):
 
     def __new__(self, id,
@@ -352,6 +356,7 @@ class Movie(namedtuple('Movie', [
                 reviews=None, critics=None,
                 title=None, year=None, image=None, link=None,
                 duration=None, plot=None, director=None, genres=None,
+                actor_ids=None
     ):
 
         if not title:
@@ -364,6 +369,7 @@ class Movie(namedtuple('Movie', [
             plot = cached.plot
             director = cached.director
             genres = cached.genres
+            actor_ids = cached.actor_ids
 
         if reviews:
             num_ratings = len(reviews)
@@ -373,7 +379,7 @@ class Movie(namedtuple('Movie', [
         return super(Movie, self).__new__(
             self, id, title, year, image, link, duration, plot, director,
             genres, user_rating, critic_rating, mean_rating, num_ratings,
-            saved, skipped, reviews, critics)
+            saved, skipped, reviews, critics, actor_ids)
 
     def rotten_tomatoes_link(self):
         return 'https://www.rottentomatoes.com/m/%s' % self.link
@@ -384,6 +390,22 @@ class Movie(namedtuple('Movie', [
 
     def director_id(self):
         return director_index.inv[self.director]
+
+    def actors(self):
+        return [actor_index[actor_id] for actor_id in self.actor_ids]
+
+    def has_actors(self):
+        return bool(self.actor_ids)
+
+    def actor_links(self):
+        return ', '.join([
+            '<a href="/actor/%s">%s</a>' % (actor.id, actor.name)
+            for actor in self.actors()
+        ])
+
+
+class Actor(namedtuple('Actor', ['id', 'name', 'image'])):
+    pass
 
 
 class Critic(namedtuple('Critic', [
@@ -448,11 +470,15 @@ class MovieFilter(namedtuple('MovieFilter', [
     def sql_where_clauses(self):
         clauses = []
 
-        if frozenset(self.genres) != frozenset(all_genres):
+        if not self.genres:
+            clauses.append('FALSE')
+        elif frozenset(self.genres) != frozenset(all_genres):
             clauses.append(
                 'genre IN (%s)' % (', '.join(['%s'] * len(self.genres))))
 
-        if frozenset(self.decades) != frozenset(all_decades):
+        if not self.decades:
+            clauses.append('FALSE')
+        elif frozenset(self.decades) != frozenset(all_decades):
             clauses.append(
                 'FLOOR(year / 10) * 10 IN (%s)' %
                 (', '.join(['%s'] * len(self.decades))))
@@ -745,7 +771,7 @@ def load_recommended_movies(user, movie_filter, limit=NUM_RECOMMENDED_MOVIES):
         ORDER BY COUNT(DISTINCT critic_id) DESC
         LIMIT %s
     '''.format(
-        movies_placeholders=', '.join(['%s'] * len(excluded_movie_ids)),
+        movies_placeholders=', '.join(['%s'] * (1 + len(excluded_movie_ids))),
         filter_where_clauses=movie_filter.sql_where_clauses(),
         filter_having_clauses=movie_filter.sql_having_clauses(),
     )
@@ -753,6 +779,7 @@ def load_recommended_movies(user, movie_filter, limit=NUM_RECOMMENDED_MOVIES):
     args = (
         [user.id] +
         [user.id] +
+        [-1] +
         excluded_movie_ids +
         movie_filter.sql_where_arguments() +
         movie_filter.sql_having_arguments() +
@@ -990,6 +1017,18 @@ def autocomplete_directors():
     })
 
 
+@app.route('/autocomplete/actors')
+def autocomplete_actors():
+    query = request.args['query'].lower()
+    matching_actors = sorted(
+        set([actor.name for actor in actor_index.itervalues()
+             if query in actor.name.lower()]),
+            key=lambda s: (len(s), s))[:100]
+    return jsonify({
+        'suggestions': [{'value': title} for title in matching_actors]
+    })
+
+
 @app.route('/autocomplete/critics')
 def autocomplete_critics():
     query = request.args['query'].lower()
@@ -1075,11 +1114,11 @@ def unrate(user, movie_id):
     return 'ok'
 
 
-@app.route('/your25')
+@app.route('/your24')
 @require_user
-def your25(user):
+def your24(user):
     critics = user.load_similar_critics()
-    return render_template('your25.html', user=user, critics=critics)
+    return render_template('your24.html', user=user, critics=critics)
 
 
 @app.route('/search')
@@ -1110,23 +1149,40 @@ def search_by_title(user):
 @app.route('/search-director', methods=['POST'])
 @require_user
 def search_by_director(user):
-    name = request.form['name']
-    if name not in director_index.inv:
+    name = request.form['name'].lower()
+    directors = [i for (i, d) in director_index.iteritems()
+                 if d.lower() == name]
+    if not directors:
         session['error'] = '"%s" is not in the database' % name
         return redirect(url_for('search'))
 
-    director_id = director_index.inv[name]
+    director_id = directors[0]
 
     return redirect(url_for('director_view', director_id=director_id))
+
+
+@app.route('/search-actor', methods=['POST'])
+@require_user
+def search_by_actor(user):
+    name = request.form['name'].lower()
+    actors = [actor for actor in actor_index.itervalues()
+              if actor.name.lower() == name]
+    if not actors:
+        session['error'] = '"%s" is not in the database' % name
+        return redirect(url_for('search'))
+
+    actor = actors[0]
+
+    return redirect(url_for('actor_view', actor_id=actor.id))
 
 
 @app.route('/search-critic', methods=['POST'])
 @require_user
 def search_by_critic(user):
-    name = request.form['name']
+    name = request.form['name'].lower()
     critic_ids = [
         critic_id for critic_id, (_, critic_name, _)
-        in critic_cache.iteritems() if critic_name == name]
+        in critic_cache.iteritems() if critic_name.lower() == name]
 
     if not critic_ids:
         session['error'] = '"%s" is not in the database' % name
@@ -1141,13 +1197,27 @@ def director_view(user, director_id):
     movie_filter = MovieFilter()
     director_name = director_index[director_id]
     movie_ids = [m.id for m in movie_cache.itervalues()
-                 if m.director == director_name]
+                 if m.director and m.director == director_name]
 
     movies = load_movies_for_user(user, movie_filter, movie_ids)
     movies = sorted(movies, key=lambda m: m.mean_rating, reverse=True)
     return render_template('director.html', user=user,
                            director_name=director_name,
                            movies=movies)
+
+
+@app.route('/actor/<int:actor_id>')
+@require_user
+def actor_view(user, actor_id):
+    movie_filter = MovieFilter()
+    actor = actor_index[actor_id]
+    movie_ids = [m.id for m in movie_cache.itervalues()
+                 if actor_id in m.actor_ids]
+
+    movies = load_movies_for_user(user, movie_filter, movie_ids)
+    movies = sorted(movies, key=lambda m: m.mean_rating, reverse=True)
+    return render_template('actor.html', user=user,
+                           actor=actor, movies=movies)
 
 
 @app.route('/critic/<int:critic_id>')
@@ -1179,6 +1249,93 @@ def update_filter(user):
     return 'ok'
 
 
+@app.route('/log-out')
+@require_user
+def log_out(user):
+    if 'movie_filter' in session:
+        del session['movie_filter']
+    del session['user_id']
+    return redirect(url_for('index'))
+
+
+@app.route('/data-dump')
+@require_user
+def data_dump(user):
+    return 'not implemented yet'
+
+
+@app.route('/test')
+def test():
+    cursor = get_db().cursor()
+
+    sql = '''
+        SELECT title, ur.rating, r.rating, meanrating, ABS(AVG(r.rating) - ur.rating) < 2, SIGN(AVG(r.rating) - meanrating) = SIGN(ur.rating - meanrating)
+        FROM user_rating ur
+        JOIN movie m
+        ON ur.movie_id = m.id
+        JOIN meanratings mr
+        ON m.id = mr.movie_id
+        JOIN review r
+        ON ur.movie_id = r.movie_id
+        JOIN (
+            SELECT
+                critic_id,
+                POWER(rating_similarity, %s)
+                    * POWER(acceptability, %s)
+                    * POWER(num_shared_reviews, %s)
+                    * POWER(samesidedness, %s) AS score,
+                rating_similarity,
+                acceptability,
+                num_shared_reviews,
+                samesidedness
+            FROM (
+                SELECT critic_id,
+                    AVG(5 - ABS(r.rating - ur.rating)) AS rating_similarity,
+                    AVG(ABS(r.rating - ur.rating) < 2) AS acceptability,
+                    COUNT(*) AS num_shared_reviews,
+                    AVG(SIGN(r.rating - meanrating) =
+                        SIGN(ur.rating - meanrating)) AS samesidedness
+                FROM review r
+                JOIN user_rating ur
+                ON r.movie_id = ur.movie_id
+                JOIN meanratings mr
+                ON r.movie_id = mr.movie_id
+                WHERE user_id = %s
+                GROUP BY critic_id
+            ) t
+            ORDER BY score DESC
+            LIMIT %s
+        ) t1
+        ON t1.critic_id = r.critic_id
+        WHERE user_id = %s
+        GROUP BY m.id
+        ORDER BY 4 DESC
+    '''
+
+    cursor.execute(sql, (float(request.args['r']),
+                         float(request.args['a']),
+                         float(request.args['n']),
+                         float(request.args['s']),
+                         1,
+                         int(request.args['c']),
+                         1))
+    rows = cursor.fetchall()
+
+    ret = ''
+
+    for row in rows:
+        break
+        ret += '%-40s %.2f %.2f %.2f %s %s\n' % (row[0], row[1], row[2], row[3], 'A' if row[4] else 'N', 'same' if row[5] else 'diff')
+
+    ret += 'c: %s' % request.args['c']
+    ret += '\nmean diff: %.2f' % (sum([abs(r[2] - r[1]) for r in rows]) / len(rows))
+    ret += '\nnum movies: %d' % len(rows)
+    ret += '\nnum unacceptable: %d' % sum([not r[4] for r in rows])
+    ret += '\nsamesidedness: %.2f' % (float(sum([r[5] for r in rows])) / len(rows))
+
+    return ret + '\n'
+
+
 @app.route('/update-similar-critics')
 def update_similar_critics():
     if time.time() - last_update_time < 60:
@@ -1188,6 +1345,8 @@ def update_similar_critics():
     for user in iter_users():
         latest_rating_time = user.load_latest_rating_time()
         latest_update_time = user.load_latest_update_time()
+        if user.username == 'andreas':
+            print user.username, latest_rating_time, latest_update_time
         if latest_rating_time > latest_update_time:
             user.update_similar_critics()
 
@@ -1199,16 +1358,26 @@ def read_critic_cache():
         return cPickle.load(f)
 
 
+def read_actor_cache():
+    actor_index = {}
+    with open('actors.cpkl') as f:
+        for actor_id, (name, title) in cPickle.load(f).iteritems():
+            actor_index[actor_id] = Actor(actor_id, name, title)
+
+    return actor_index
+
+
 def read_movie_cache():
     movie_index = {}
     directors = set()
     with open('movies.cpkl') as f:
         cached_tuples = cPickle.load(f)
     for movie_id, (title, year, image, link, duration, plot,
-                   director, genres) in cached_tuples.iteritems():
+                   director, genres, actor_ids) in cached_tuples.iteritems():
         movie_index[movie_id] = Movie(
             id=movie_id, title=title, year=year, image=image, link=link,
-            duration=duration, plot=plot, director=director, genres=genres)
+            duration=duration, plot=plot, director=director, genres=genres,
+            actor_ids=actor_ids)
         if director and director not in directors:
             directors.add(director)
 
@@ -1217,6 +1386,7 @@ def read_movie_cache():
 
 
 critic_cache = read_critic_cache()
+actor_index = read_actor_cache()
 movie_cache, director_index = read_movie_cache()
 avatars = [os.path.basename(a) for a in glob('static/images/avatars/*.png')]
 

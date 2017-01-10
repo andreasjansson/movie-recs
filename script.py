@@ -96,8 +96,55 @@ def create_user_tables():
     ])
 
 
+def insert_actors():
+    global actor_id2link
+
+    cursor.execute('SET FOREIGN_KEY_CHECKS=0')
+
+    cursor.execute('DROP TABLE IF EXISTS actor')
+    cursor.execute('''CREATE TABLE actor (
+        id              INT PRIMARY KEY,
+        name            VARCHAR(128),
+        image           VARCHAR(128)
+    ) ENGINE=InnoDB''')
+
+    cursor.execute('DROP TABLE IF EXISTS movie2actor')
+    cursor.execute('''CREATE TABLE movie2actor (
+        movie_id        INT,
+        actor_id        INT,
+        position        INT,
+        PRIMARY KEY (movie_id, actor_id),
+        FOREIGN KEY (movie_id) REFERENCES movie(id),
+        FOREIGN KEY (actor_id) REFERENCES actor(id)
+    ) ENGINE=InnoDB''')
+
+    cursor.execute('SET FOREIGN_KEY_CHECKS=1')
+
+    i = 0
+    actor_id2link = bidict()
+    with open('movies.json') as f:
+        for line in f:
+            r = json.loads(line)
+            for a in r['actors']:
+                link = a['link']
+                if link not in actor_id2link.inv:
+                    actor_id = len(actor_id2link)
+                    actor_id2link[actor_id] = link
+                    cursor.execute('''
+                        INSERT INTO actor (id, name, image)
+                        VALUES (%s, %s, %s)
+                    ''', (actor_id, a['name'], a['image']))
+
+                    if i % 10000 == 0:
+                        conn.commit()
+                        print i
+                    i += 1
+
+    conn.commit()
+
+
 def insert_movies():
-    global movie_id2link
+    global movie_id2link, actor_id2link
 
     cursor.execute('SET FOREIGN_KEY_CHECKS=0')
 
@@ -124,7 +171,10 @@ def insert_movies():
 
     conn.commit()
 
+    #cursor.execute('SET FOREIGN_KEY_CHECKS=0')
+
     movie_id2link = bidict()
+
     i = 0
     with open('movies.json') as f:
         for line in f:
@@ -158,10 +208,20 @@ def insert_movies():
                     VALUES (%s, %s)
                 ''', (movie_id, genre))
 
+            for position, actor in enumerate(r['actors']):
+                actor_link = actor['link']
+                actor_id = actor_id2link.inv[actor_link]
+                cursor.execute('''
+                    INSERT INTO movie2actor (movie_id, actor_id, position)
+                    VALUES (%s, %s, %s)
+                ''', (movie_id, actor_id, position))
+
             if i % 1000 == 0:
                 conn.commit()
                 print i
             i += 1
+
+    conn.commit()
 
     create_indexes([
         ('movie', 'title'),
@@ -209,6 +269,8 @@ def insert_critics():
                     conn.commit()
                     print i
                 i += 1
+
+    conn.commit()
 
 
 def insert_reviews():
@@ -280,6 +342,8 @@ def insert_reviews():
 
                 i += 1
 
+    conn.commit()
+
     create_indexes([
         ('review', 'rating'),
     ])
@@ -298,6 +362,7 @@ def insert_reviews():
 
 
 def insert_data():
+    insert_actorsx()
     insert_movies()
     insert_critics()
     insert_reviews()
@@ -348,18 +413,6 @@ def translate_rating(r):
     return None
 
 
-def write_title_cache():
-    titles = set()
-    cursor.execute('SELECT title, translation, year FROM movie')
-    for title, translation, year in cursor:
-        titles.add('%s (%s)' % (title, year))
-        if translation:
-            titles.add('%s (%s)' % (translation, year))
-
-    with open('titles.cpkl', 'w') as f:
-        cPickle.dump(titles, f, protocol=cPickle.HIGHEST_PROTOCOL)
-
-
 def write_critics_cache():
     critics = {}
 
@@ -374,12 +427,35 @@ def write_critics_cache():
 def write_movies_cache():
     movies = {}
 
-    cursor.execute('SELECT id, title, year, image, link, duration, plot, director, GROUP_CONCAT(genre SEPARATOR "|") FROM movie m JOIN movie2genre g ON m.id = g.movie_id GROUP BY movie_id')
-    for movie_id, title, year, image, link, duration, plot, director, genres in cursor:
-        movies[movie_id] = (title, year, image, link, duration, plot, director, genres.split('|'))
+    cursor.execute('''
+        SELECT id, title, year, image, link, duration, plot, director,
+            (SELECT GROUP_CONCAT(genre SEPARATOR "|")
+             FROM movie2genre WHERE movie_id = m.id),
+            (SELECT GROUP_CONCAT(actor_id ORDER BY position SEPARATOR "|")
+             FROM movie2actor
+             WHERE movie_id = m.id AND position < 10)
+        FROM movie m
+    ''')
+    for (movie_id, title, year, image, link, duration, plot,
+         director, genres, actors) in cursor:
+        movies[movie_id] = (
+            title, year, image, link, duration, plot, director,
+            genres.split('|') if genres else [],
+            [int(a) for a in actors.split('|')] if actors else [])
 
     with open('movies.cpkl', 'w') as f:
         cPickle.dump(movies, f, protocol=cPickle.HIGHEST_PROTOCOL)
+
+
+def write_actors_cache():
+    actors = {}
+
+    cursor.execute('SELECT id, name, image FROM actor')
+    for actor_id, name, image in cursor:
+        actors[actor_id] = (name, image)
+
+    with open('actors.cpkl', 'w') as f:
+        cPickle.dump(actors, f, protocol=cPickle.HIGHEST_PROTOCOL)
 
 
 def create_indexes(indexes):

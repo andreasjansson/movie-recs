@@ -2,18 +2,29 @@
 
 {% include 'menu.html' %}
 
+<div class="row page-title">
+  <h1 class="col-xs-12">Curate your taste</h1>
+  <p class="explanation col-xs-12">
+    {% if user.has_similar_critics() %}
+    Add more of your favorite movies, or click on your rated and skipped movies below to change the rating.
+    {% else %}
+    Start by entering your favorite movies. After you've picked a few, we'll find the top 24 critics most similar to you. Then you can go to <a href="/discover">Discover</a> to see what movies they like, and review them yourself.
+    {% endif %}
+  </p>
+</div>
+
 {% if error %}
 <div class="row">
   <p class="col-xs-12" id="error">{{ error }}</p>
 </div>
 {% endif %}
 
-<div class="row">
+<div class="row" id="choose-favorites">
 
   <div class="sm-col-6 col-xs-12">
     <div class="row">
       <div class="col-xs-12">
-        <h2>Choose favorite movies</h2>
+        <h2>Pick your favorite movies</h2>
         <form class="form-inline" action="/add-movie" method="POST" id="add-movie-form">
           <div class="form-group">
             <label for="title-year">Title</label>
@@ -26,6 +37,7 @@
   </div>
 </div>
 
+{% if rated_movies %}
 <div class="row">
   <h2 class="col-xs-12">Your ratings</h2>
   {% for movie in rated_movies %}
@@ -34,7 +46,9 @@
   </div>
   {% endfor %}
 </div>
+{% endif %}
 
+{% if skipped_movies %}
 <div class="row">
   <h2 class="col-xs-12">Your skips</h2>
   {% for movie in skipped_movies %}
@@ -43,5 +57,6 @@
   </div>
   {% endfor %}
 </div>
+{% endif %}
 
 {% include 'footer.html' %}

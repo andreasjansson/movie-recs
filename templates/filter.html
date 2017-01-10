@@ -2,7 +2,12 @@
 
 {% include 'menu.html' %}
 
-<div class="row filter">
+<div class="row page-title">
+  <h1 class="col-xs-12">Filter</h1>
+  <p class="explanation col-xs-12">The filters apply to Discover, Saves, and Your 24.</p>
+</div>
+
+<div id="filter" class="row">
 
   <form id="form" class="col-xs-12" method="POST" action="/filter">
 
@@ -75,5 +80,6 @@
   </form>
 
 </div>
+
 
 {% include 'footer.html' %}

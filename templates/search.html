@@ -48,6 +48,22 @@
   <div class="sm-col-6 col-xs-12">
     <div class="row">
       <div class="col-xs-12">
+        <h2>By actor</h2>
+        <form class="form-inline" action="/search-actor" method="POST" id="actor-form">
+          <div class="form-group">
+            <input type="text" id="actor-input" name="name" class="form-control" />
+          </div>
+          <input type="submit" value="Search" class="btn btn-default" />
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row">
+  <div class="sm-col-6 col-xs-12">
+    <div class="row">
+      <div class="col-xs-12">
         <h2>By critic</h2>
         <form class="form-inline" action="/search-critic" method="POST" id="critic-form">
           <div class="form-group">

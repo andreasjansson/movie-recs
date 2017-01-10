@@ -12,8 +12,8 @@ a {
     color: #64c6f9;
 }
 
-.navbar-default {
-    border: none;
+.page-title {
+    margin-bottom: 30px;
 }
 
 #menu {
@@ -40,17 +40,21 @@ a {
 
 .movie {
     height: 400px;
-    margin-bottom: 100px;
+    margin-bottom: 150px;
 }
 
 .movie-title {
     position: absolute;
-    top: 200px;
+    top: 0px;
     margin: 10px;
     z-index: 10;
 }
 
 .movie-title a {
+    height: 290px;
+    display: flex;
+    justify-content: flex-end;
+    align-items: flex-end;
     font-size: 28px;
     font-family: 'Rock Salt', cursive;
     color: white;
@@ -62,8 +66,9 @@ a {
 }
 
 .movie-image-wrapper {
-    height: 300px;
+    height: 400px;
     overflow: hidden;
+    background-color: black;
 }
 
 .movie-image-wrapper:before {
@@ -72,8 +77,8 @@ a {
     position: absolute;
     margin-left: -15px;
     width: 100%;
-    height: 200px;
-    top: 100px;
+    height: 250px;
+    top: 150px;
     z-index: 1;
     background: linear-gradient(transparent, #000) left repeat;
 }
@@ -89,13 +94,13 @@ a {
 .stars {
     position: absolute;
     margin: 10px 25px 10px 10px;
-    top: 140px;
+    top: 340px;
     z-index: 20;
     overflow: hidden;
 }
 
 .user-stars {
-    top: 300px;
+    top: 400px;
 }
 
 .user-stars img {
@@ -116,13 +121,16 @@ a {
 
 .save-skip {
     position: absolute;
-    top: 370px;
-    margin-left: 10px;
+    top: 470px;
+    margin-left: 15px;
     font-size: 20px;
 }
 
-.save-skip img {
-    width: 50px;
+.saved-skipped {
+    position: absolute;
+    top: 420px;
+    margin-left: 15px;
+    font-size: 20px;
 }
 
 .skip {
@@ -131,7 +139,7 @@ a {
 
 .mini-critics {
     position: absolute;
-    top: 115px;
+    top: 315px;
     z-index: 40;
     margin-left: -15px;
     width: 100%;
@@ -200,7 +208,12 @@ a {
     margin-top: -10px;
 }
 
-#title-year, #director-input, #critic-input {
+#choose-favorites {
+    margin-top: -20px;
+    margin-bottom: 20px;
+}
+
+#title-year, #director-input, #critic-input, #actor-input {
     min-width: 50vw;
 }
 
@@ -231,8 +244,18 @@ a {
     border-bottom: 1px solid #000;
 }
 
-.filter {
+#filter {
     font-size: 18px;
+    margin-bottom: 30px;
+    margin-top: -20px;
+}
+
+.explanation {
+    font-style: italic;
+}
+
+.important {
+    font-size: 24px;
 }
 
 .enable-disable-all {
@@ -247,4 +270,25 @@ a {
 
 #footer a {
     color: yellow;
+}
+
+#crap-movies img {
+    margin-top: 5vw;
+    margin-left: 1vw;
+    margin-bottom: 5vw;
+    transform: rotate(-6deg);
+    max-width: 80vw;
+}
+
+.form-inline .form-group {
+    margin-right: 20px;
+}
+
+#username-explanation {
+    margin-top: 20px;
+}
+
+.admin-email {
+    font-family: monospace;
+    font-size: 14px;
 }

@@ -13,7 +13,8 @@ function route() {
         '/critic/[^/]+': critic,
         '/movie/[^/]+': movie,
         '/search': search,
-        '/director/[^/]+': director
+        '/director/[^/]+': director,
+        '/actor/[^/]+': actor
     }
 
     for (key in routes) {
@@ -37,9 +38,14 @@ function director() {
     $('a.ajax-movie-control').on('click', directorAjaxMovieControlClick);
 }
 
+function actor() {
+    $('a.ajax-movie-control').on('click', directorAjaxMovieControlClick);
+}
+
 function curate() {
     $('#title-year').autocomplete({
         serviceUrl: '/autocomplete/titles',
+        deferRequestsBy: 100,
         onSelect: function (suggestion) {
             $('#add-movie-form').submit()
         }
@@ -56,23 +62,38 @@ function filter() {
 
 function movie() {
     $('a.ajax-movie-control').on('click', ajaxMovieControlClickRefresh);
+    $('#show-full-plot').on('click', function() {
+        $('#movie-plot').hide();
+        $('#movie-plot-long').show();
+        return false;
+    });
 }
 
 function search() {
     $('#title-year').autocomplete({
         serviceUrl: '/autocomplete/titles',
+        deferRequestsBy: 100,
         onSelect: function (suggestion) {
             $('#title-form').submit()
         }
     });
     $('#director-input').autocomplete({
         serviceUrl: '/autocomplete/directors',
+        deferRequestsBy: 100,
         onSelect: function (suggestion) {
             $('#director-form').submit()
         }
     });
+    $('#actor-input').autocomplete({
+        serviceUrl: '/autocomplete/actors',
+        deferRequestsBy: 100,
+        onSelect: function (suggestion) {
+            $('#actor-form').submit()
+        }
+    });
     $('#critic-input').autocomplete({
         serviceUrl: '/autocomplete/critics',
+        deferRequestsBy: 100,
         onSelect: function (suggestion) {
             $('#critic-form').submit()
         }
@@ -110,7 +131,15 @@ function discoverAjaxMovieControlClick(e) {
     var $movie = $a.closest('.movie');
 
     $a.addClass('selected');
-    setTimeout(function() { $movie.parent().remove(); }, 200);
+    setTimeout(function() {
+        $movie.parent().remove();
+
+        console.log($('#discover-movies .movie').length);
+
+        if ($('#discover-movies .movie').length == 0) {
+            location.reload();
+        };
+    }, 200);
 
     return false;
 }

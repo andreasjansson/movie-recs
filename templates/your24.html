@@ -1,0 +1,26 @@
+{% include 'header.html' %}
+
+{% include 'menu.html' %}
+
+<div class="row page-title">
+  <h1 class="col-xs-12">Your 24</h1>
+  <p class="explanation col-xs-12">The 24 critics most similar to your taste. This will update as you review more movies.</p>
+</div>
+
+<div class="row">
+
+  {% for critic in critics %}
+  <div class="col-xs-12 col-sm-6 col-md-4 col-lg-3 critic">
+    {% include 'critic.html' %}
+  </div>
+  {% endfor %}
+
+  {% if not critics %}
+  <p class="col-xs-12 important">
+    We haven't found your top critics yet. Try <a href="/curate">reviewing some more movies</a>.
+  </p>
+  {% endif %}
+
+</div>
+
+{% include 'footer.html' %}

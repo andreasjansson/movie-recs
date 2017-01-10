@@ -3,27 +3,26 @@
 {% include 'menu.html' %}
 
 <div class="row">
-  <div class="col-xs-12 col-sm-4">
+  <div class="col-xs-12 col-sm-6 col-lg-4">
     {% include 'movie.html' %}
 
-    {% if movie.saved %}
-    <a class="ajax-movie-control" href="/movie/{{ movie.id }}/unsave">Un-save</a>
-    {% endif %}
-    {% if movie.skipped %}
-    <a class="ajax-movie-control" href="/movie/{{ movie.id }}/unskip">Un-skip</a>
-    {% endif %}
+    <div class="save-skip">
+      {% if movie.saved %}
+      <a class="ajax-movie-control" href="/movie/{{ movie.id }}/unsave">Un-save</a>
+      {% endif %}
+      {% if movie.skipped %}
+      <a class="ajax-movie-control" href="/movie/{{ movie.id }}/unskip">Un-skip</a>
+      {% endif %}
 
-    {% if movie.user_rating %}
-    <a class="ajax-movie-control" href="/movie/{{ movie.id }}/unrate">Un-rate</a>
-    {% for rating in [1, 2, 3, 4, 5] %}
-    <a class="ajax-movie-control" href="/movie/{{ movie.id }}/rate?rating={{ rating }}">{{ rating }}</a>
-    {% endfor %}
-    {% endif %}
+      {% if movie.user_rating %}
+      <a class="ajax-movie-control" href="/movie/{{ movie.id }}/unrate">Un-rate</a>
+      {% endif %}
+    </div>
 
   </div>
 
-  <div class="col-xs-12 col-sm-4" id="movie-info">
-    <h2>Movie info</h2>
+  <div class="col-xs-12 col-sm-6 col-lg-4" id="movie-info">
+    <h1>Movie info</h1>
     <p id="movie-year">Year: {{ movie.year }}</p>
     {% if movie.director %}
     <p id="movie-director">Director: <a href="/director/{{ movie.director_id() }}">{{ movie.director }}</a></p>
@@ -32,11 +31,16 @@
     <p id="movie-duration">Running time: {{ movie.duration }}</p>
     {% endif %}
     {% if movie.genres %}
-    <p id="movie-plot">Genres: {{ movie.genres | join(', ') }}</p>
+    <p id="movie-genres">Genres: {{ movie.genres | join(', ') }}</p>
+    {% endif %}
+    {% if movie.has_actors() %}
+    <p id="movie-actors">Actors: {{ movie.actor_links() | safe }}</p>
     {% endif %}
     <p><a href="{{ movie.rotten_tomatoes_link() }}" target="_blank">Rotten Tomatoes <img src="/images/external-link.png" class="external-link" /></a></p>
     {% if movie.plot %}
-    <p id="movie-plot">{{ movie.plot }}</p>
+    <p id="movie-plot">{{ movie.plot | truncate(300) }}
+    {% if movie.plot | length > 300 %}<a href="#" id="show-full-plot">Show more</a>{% endif %}</p>
+    <p style="display: none" id="movie-plot-long">{{ movie.plot }}</p>
     {% endif %}
   </div>
 

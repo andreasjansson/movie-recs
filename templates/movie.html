@@ -6,7 +6,7 @@
     </div>
   </a>
 
-  <p class="movie-title"><a href="/movie/{{ movie.id }}">{{ movie.title | title | truncate(40) }}</a></p>
+  <p class="movie-title"><a href="/movie/{{ movie.id }}" title="{{ movie.html_title() }}">{{ movie.title | title }}</a></p>
 
   {% if movie.mean_rating %}
 
@@ -68,7 +68,7 @@
   {% endif %}
 
 
-  <div class="save-skip">
+  <div class="saved-skipped">
     {% if movie.saved %}
     <p class="saved">Saved</p>
     {% endif %}
