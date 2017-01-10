@@ -720,7 +720,7 @@ def load_movies_for_critic(critic, user, movie_filter):
         ON g.movie_id = m.id
         WHERE {filter_clauses}
         GROUP BY m.id
-        ORDER BY r.rating DESC, title
+        ORDER BY r.rating DESC, m.id ^ r.critic_id  -- "random"
         LIMIT 500
     '''.format(
         filter_clauses=movie_filter.sql_where_clauses(),
